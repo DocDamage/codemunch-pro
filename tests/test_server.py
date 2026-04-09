@@ -65,6 +65,16 @@ class Calculator {
 }
 '''
 
+DUPLICATE_MAIN_A = '''\
+def main():
+    return 1
+'''
+
+DUPLICATE_MAIN_B = '''\
+def main():
+    return 2
+'''
+
 
 @pytest.fixture
 def repo_dir(tmp_path):
@@ -128,6 +138,25 @@ class TestIndexDirectory:
         db = _get_db(str(repo_dir))
         langs = db.get_stats()['languages']
         assert 'javascript' not in langs
+
+    def test_embed_mode_handles_duplicate_symbol_names(self, tmp_path, monkeypatch):
+        (tmp_path / 'a.py').write_text(DUPLICATE_MAIN_A)
+        (tmp_path / 'b.py').write_text(DUPLICATE_MAIN_B)
+
+        class FakeEmbedder:
+            def format_symbol_text(self, **kwargs):
+                return kwargs['name']
+
+            def embed(self, texts):
+                return [[0.0] * 384 for _ in texts]
+
+        monkeypatch.setattr('codemunch_pro.server._embedder', None)
+        monkeypatch.setattr('codemunch_pro.server._get_embedder', lambda: FakeEmbedder())
+
+        stats = _index_directory(str(tmp_path), include_patterns=['*.py'], embed=True)
+
+        assert 'embedding_error' not in stats
+        assert stats['indexed'] == 2
 
 
 class TestServerTools:
@@ -280,7 +309,7 @@ class TestDiffSymbols:
         old_hashes = db.get_all_file_hashes()
         changed = []
         for f in source_files:
-            rel = str(f.relative_to(repo_dir))
+            rel = f.relative_to(repo_dir).as_posix()
             if old_hashes.get(rel) != _sha256_file(f):
                 changed.append(rel)
 

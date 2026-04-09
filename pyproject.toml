@@ -57,3 +57,6 @@ packages = ["src/codemunch_pro"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+  "network: requires network access",
+]

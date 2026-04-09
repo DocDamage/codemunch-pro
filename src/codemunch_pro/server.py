@@ -62,7 +62,7 @@ def _load_gitignore(root: Path) -> pathspec.PathSpec | None:
     gitignore = root / '.gitignore'
     if gitignore.is_file():
         patterns = gitignore.read_text(errors='replace').splitlines()
-        return pathspec.PathSpec.from_lines('gitignore', patterns)
+        return pathspec.PathSpec.from_lines('gitwildmatch', patterns)
     return None
 
 
@@ -78,7 +78,7 @@ def _walk_source_files(
     ignore_lines = list(DEFAULT_IGNORE_PATTERNS)
     if exclude_patterns:
         ignore_lines.extend(exclude_patterns)
-    ignore_spec = pathspec.PathSpec.from_lines('gitignore', ignore_lines)
+    ignore_spec = pathspec.PathSpec.from_lines('gitwildmatch', ignore_lines)
 
     # Load .gitignore
     gitignore_spec = _load_gitignore(root)
@@ -87,7 +87,7 @@ def _walk_source_files(
     include_spec = None
     if include_patterns:
         include_spec = pathspec.PathSpec.from_lines(
-            'gitignore', include_patterns,
+            'gitwildmatch', include_patterns,
         )
 
     for dirpath, dirnames, filenames in os.walk(root):
@@ -159,7 +159,7 @@ def _index_directory(
     embed_queue: list[tuple[int, str]] = []  # (symbol_id, text)
 
     for file_path in source_files:
-        rel_path = str(file_path.relative_to(root))
+        rel_path = file_path.relative_to(root).as_posix()
         current_paths.add(rel_path)
 
         # Incremental: skip unchanged files
@@ -174,7 +174,7 @@ def _index_directory(
             content = file_path.read_text(errors='replace')
             size = file_path.stat().st_size
 
-            file_id = db.upsert_file(
+            db.upsert_file(
                 path=rel_path,
                 sha256=file_hash,
                 language=language,
@@ -189,6 +189,11 @@ def _index_directory(
             # Queue symbols for embedding
             if embed:
                 embedder = _get_embedder()
+                inserted_symbols = db.get_file_symbols(rel_path)
+                inserted_by_key = {
+                    (row['qualified_name'], row['line'], row['byte_offset']): row['id']
+                    for row in inserted_symbols
+                }
                 for sym in symbols:
                     text = embedder.format_symbol_text(
                         name=sym.name,
@@ -197,10 +202,11 @@ def _index_directory(
                         docstring=sym.docstring,
                         language=sym.language,
                     )
-                    # We need the symbol ID from the DB
-                    sym_row = db.get_symbol(sym.qualified_name)
-                    if sym_row:
-                        embed_queue.append((sym_row['id'], text))
+                    symbol_id = inserted_by_key.get(
+                        (sym.qualified_name, sym.line, sym.byte_offset),
+                    )
+                    if symbol_id is not None:
+                        embed_queue.append((symbol_id, text))
 
         except Exception as e:
             logger.warning('Error indexing %s: %s', file_path, e)
