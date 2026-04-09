@@ -39,6 +39,24 @@ class Greeter:
         return f"Bye, {name}"
 '''
 
+DUPLICATE_NAME_SOURCE_A = '''\
+def main():
+    return 1
+
+
+def helper():
+    return main()
+'''
+
+DUPLICATE_NAME_SOURCE_B = '''\
+def main():
+    return 2
+
+
+def helper2():
+    return main()
+'''
+
 
 @pytest.fixture
 def repo_dir(tmp_path):
@@ -310,3 +328,39 @@ class TestIncrementalIndexing:
         assert count2 > count1
         # File hash should be updated
         assert db.get_file_hash('src/main.py') == 'v2'
+
+
+class TestDuplicateQualifiedNames:
+    def test_resolves_same_file_edges_for_duplicate_names(self, db_dir, tmp_path):
+        (tmp_path / 'a.py').write_text(DUPLICATE_NAME_SOURCE_A)
+        (tmp_path / 'b.py').write_text(DUPLICATE_NAME_SOURCE_B)
+
+        db = Database(str(tmp_path), db_dir=db_dir)
+        try:
+            for name in ('a.py', 'b.py'):
+                file_path = tmp_path / name
+                source = file_path.read_text()
+                db.upsert_file(
+                    path=name,
+                    sha256=f'hash_{name}',
+                    language='python',
+                    size_bytes=len(source),
+                    symbols=extract_symbols(file_path),
+                    file_content=source,
+                )
+
+            db.resolve_call_edges()
+
+            helper_callees = db.get_callees('helper')
+            helper2_callees = db.get_callees('helper2')
+
+            assert any(
+                row['resolved_name'] == 'main' and row['def_file'] == 'a.py'
+                for row in helper_callees
+            )
+            assert any(
+                row['resolved_name'] == 'main' and row['def_file'] == 'b.py'
+                for row in helper2_callees
+            )
+        finally:
+            db.close()

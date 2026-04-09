@@ -111,6 +111,11 @@ CREATE VIRTUAL TABLE IF NOT EXISTS symbols_vec USING vec0(
 """
 
 
+def _normalize_rel_path(path: str) -> str:
+    """Normalize repository-relative paths to POSIX separators."""
+    return path.replace('\\', '/')
+
+
 class Database:
     """Per-repo SQLite database with FTS5 and vector search."""
 
@@ -182,10 +187,19 @@ class Database:
 
     def get_file_hash(self, path: str) -> str | None:
         """Get the stored SHA-256 hash for a file path."""
+        path = _normalize_rel_path(path)
         row = self.conn.execute(
             'SELECT sha256 FROM files WHERE path = ?', (path,)
         ).fetchone()
         return row['sha256'] if row else None
+
+    def _delete_vectors_for_file(self, file_id: int) -> None:
+        """Delete vector rows for all symbols owned by a file."""
+        self.conn.execute(
+            'DELETE FROM symbols_vec WHERE rowid IN '
+            '(SELECT id FROM symbols WHERE file_id = ?)',
+            (file_id,),
+        )
 
     def upsert_file(
         self,
@@ -200,6 +214,7 @@ class Database:
 
         Returns the file ID.
         """
+        path = _normalize_rel_path(path)
         cur = self.conn.cursor()
 
         # Check if file exists
@@ -209,17 +224,14 @@ class Database:
 
         if existing:
             file_id = existing['id']
+            # Delete vectors before deleting symbols so reused rowids do not
+            # collide with stale embeddings on reindex.
+            self._delete_vectors_for_file(file_id)
             # Delete old symbols (cascades to call_edges)
             cur.execute('DELETE FROM symbols WHERE file_id = ?', (file_id,))
             # Delete old FTS content
             cur.execute(
                 "DELETE FROM file_content_fts WHERE path = ?", (path,)
-            )
-            # Delete old vectors
-            cur.execute(
-                'DELETE FROM symbols_vec WHERE rowid IN '
-                '(SELECT id FROM symbols WHERE file_id = ?)',
-                (file_id,),
             )
             # Update file record
             cur.execute(
@@ -237,6 +249,7 @@ class Database:
 
         # Insert symbols
         symbol_id_map: dict[str, int] = {}  # qualified_name -> id
+        local_symbol_ids_by_name: dict[str, list[int]] = {}
         for sym in symbols:
             cur.execute(
                 'INSERT INTO symbols '
@@ -253,6 +266,7 @@ class Database:
                 ),
             )
             symbol_id_map[sym.qualified_name] = cur.lastrowid
+            local_symbol_ids_by_name.setdefault(sym.name, []).append(cur.lastrowid)
 
         # Insert call edges
         for sym in symbols:
@@ -260,6 +274,10 @@ class Database:
             if caller_id and sym.calls:
                 for call in sym.calls:
                     callee_id = symbol_id_map.get(call.callee_name)
+                    if callee_id is None:
+                        local_matches = local_symbol_ids_by_name.get(call.callee_name, [])
+                        if len(local_matches) == 1:
+                            callee_id = local_matches[0]
                     cur.execute(
                         'INSERT INTO call_edges (caller_id, callee_name, callee_id, line) '
                         'VALUES (?, ?, ?, ?)',
@@ -278,6 +296,7 @@ class Database:
 
     def delete_file(self, path: str) -> None:
         """Delete a file and all its symbols."""
+        path = _normalize_rel_path(path)
         cur = self.conn.cursor()
         file_row = cur.execute(
             'SELECT id FROM files WHERE path = ?', (path,)
@@ -285,12 +304,7 @@ class Database:
 
         if file_row:
             file_id = file_row['id']
-            # Delete vectors for this file's symbols
-            cur.execute(
-                'DELETE FROM symbols_vec WHERE rowid IN '
-                '(SELECT id FROM symbols WHERE file_id = ?)',
-                (file_id,),
-            )
+            self._delete_vectors_for_file(file_id)
             # Cascading delete handles symbols and call_edges
             cur.execute('DELETE FROM files WHERE id = ?', (file_id,))
             cur.execute(
@@ -305,14 +319,22 @@ class Database:
 
     # --- Symbol queries ---
 
-    def get_symbol(self, qualified_name: str) -> dict | None:
-        """Get a symbol by qualified name."""
-        row = self.conn.execute(
+    def get_symbol(
+        self, qualified_name: str, file_path: str = '',
+    ) -> dict | None:
+        """Get a symbol by qualified name, optionally scoped to a file."""
+        params: list[str] = [qualified_name]
+        query = (
             'SELECT s.*, f.path as file_path FROM symbols s '
             'JOIN files f ON s.file_id = f.id '
-            'WHERE s.qualified_name = ?',
-            (qualified_name,),
-        ).fetchone()
+            'WHERE s.qualified_name = ?'
+        )
+        if file_path:
+            file_path = _normalize_rel_path(file_path)
+            query += ' AND f.path = ?'
+            params.append(file_path)
+        query += ' ORDER BY f.path, s.line LIMIT 1'
+        row = self.conn.execute(query, params).fetchone()
         return dict(row) if row else None
 
     def get_symbols_batch(self, qualified_names: list[str]) -> list[dict]:
@@ -330,6 +352,7 @@ class Database:
 
     def get_file_symbols(self, file_path: str) -> list[dict]:
         """Get all symbols in a file, ordered by line number."""
+        file_path = _normalize_rel_path(file_path)
         rows = self.conn.execute(
             'SELECT s.*, f.path as file_path FROM symbols s '
             'JOIN files f ON s.file_id = f.id '
@@ -345,8 +368,9 @@ class Database:
     ) -> list[dict]:
         """Get all symbols in the repo, optionally filtered by kind."""
         query = (
-            'SELECT s.name, s.qualified_name, s.kind, s.language, '
-            's.line, s.signature, f.path as file_path '
+            'SELECT s.id, s.name, s.qualified_name, s.kind, s.language, '
+            's.line, s.end_line, s.byte_offset, s.byte_length, '
+            's.signature, f.path as file_path '
             'FROM symbols s JOIN files f ON s.file_id = f.id'
         )
         params: list = []
@@ -414,7 +438,10 @@ class Database:
     ) -> None:
         """Batch store vector embeddings."""
         from sqlite_vec import serialize_float32
+        deduped: dict[int, list[float]] = {}
         for symbol_id, embedding in items:
+            deduped[symbol_id] = embedding
+        for symbol_id, embedding in deduped.items():
             self.conn.execute(
                 'INSERT OR REPLACE INTO symbols_vec (rowid, embedding) VALUES (?, ?)',
                 (symbol_id, serialize_float32(embedding)),
@@ -532,16 +559,56 @@ class Database:
                 )
 
     def resolve_call_edges(self) -> int:
-        """Post-indexing: resolve callee_name → callee_id for all unresolved edges."""
+        """Post-indexing: resolve callee_name to callee_id when the match is unambiguous."""
         cur = self.conn.cursor()
-        updated = cur.execute(
-            'UPDATE call_edges SET callee_id = ('
-            '  SELECT s.id FROM symbols s '
-            '  WHERE s.name = call_edges.callee_name '
-            '  OR s.qualified_name = call_edges.callee_name '
-            '  LIMIT 1'
-            ') WHERE callee_id IS NULL',
-        ).rowcount
+        unresolved = cur.execute(
+            'SELECT ce.id, ce.callee_name, caller.file_id as caller_file_id '
+            'FROM call_edges ce '
+            'JOIN symbols caller ON ce.caller_id = caller.id '
+            'WHERE ce.callee_id IS NULL',
+        ).fetchall()
+
+        updated = 0
+        for row in unresolved:
+            edge_id = row['id']
+            callee_name = row['callee_name']
+            caller_file_id = row['caller_file_id']
+
+            exact_matches = cur.execute(
+                'SELECT id FROM symbols WHERE qualified_name = ? ORDER BY id',
+                (callee_name,),
+            ).fetchall()
+            if len(exact_matches) == 1:
+                cur.execute(
+                    'UPDATE call_edges SET callee_id = ? WHERE id = ?',
+                    (exact_matches[0]['id'], edge_id),
+                )
+                updated += 1
+                continue
+
+            same_file_matches = cur.execute(
+                'SELECT id FROM symbols WHERE file_id = ? AND name = ? ORDER BY id',
+                (caller_file_id, callee_name),
+            ).fetchall()
+            if len(same_file_matches) == 1:
+                cur.execute(
+                    'UPDATE call_edges SET callee_id = ? WHERE id = ?',
+                    (same_file_matches[0]['id'], edge_id),
+                )
+                updated += 1
+                continue
+
+            global_name_matches = cur.execute(
+                'SELECT id FROM symbols WHERE name = ? ORDER BY id',
+                (callee_name,),
+            ).fetchall()
+            if len(global_name_matches) == 1:
+                cur.execute(
+                    'UPDATE call_edges SET callee_id = ? WHERE id = ?',
+                    (global_name_matches[0]['id'], edge_id),
+                )
+                updated += 1
+
         self.conn.commit()
         return updated
 
