@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Any, cast
 
 from tree_sitter_language_pack import get_parser
 
@@ -49,7 +50,7 @@ def extract_symbols(file_path: str | Path) -> list[Symbol]:
         return []
 
     try:
-        parser = get_parser(spec.tree_sitter_name)
+        parser = get_parser(cast(Any, spec.tree_sitter_name))
         tree = parser.parse(source)
     except Exception as e:
         logger.warning('Parse error for %s: %s', file_path, e)

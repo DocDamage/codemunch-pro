@@ -277,7 +277,7 @@ class IDAExporter(BaseExporter):
             for func in bundle.functions:
                 lines.append(f'    # Function: {func.name}')
                 lines.append(f'    addr = 0x{func.address:X}')
-                lines.append(f'    ida_funcs.add_func(addr)')
+                lines.append('    ida_funcs.add_func(addr)')
                 if func.name:
                     safe_name = func.name.replace('"', '\\"')
                     lines.append(f'    ida_name.set_name(addr, "{safe_name}")')
@@ -494,12 +494,12 @@ class BinaryNinjaExporter(BaseExporter):
             for func in bundle.functions:
                 lines.append(f'    # Function: {func.name}')
                 lines.append(f'    addr = 0x{func.address:X}')
-                lines.append(f'    func = bv.get_function_at(addr)')
-                lines.append(f'    if func is None:')
-                lines.append(f'        func = bv.create_user_function(addr)')
+                lines.append('    func = bv.get_function_at(addr)')
+                lines.append('    if func is None:')
+                lines.append('        func = bv.create_user_function(addr)')
                 if func.name:
                     safe_name = func.name.replace('"', '\\"')
-                    lines.append(f'    if func:')
+                    lines.append('    if func:')
                     lines.append(f'        func.name = "{safe_name}"')
                 if func.comment:
                     safe_comment = func.comment.replace('"', '\\"')
@@ -535,14 +535,14 @@ class BinaryNinjaExporter(BaseExporter):
             lines.append('    # Create structures')
             for struct in bundle.structures:
                 lines.append(f'    # Structure: {struct.name}')
-                lines.append(f'    struct = Structure()')
+                lines.append('    struct = Structure()')
                 lines.append(f'    struct.name = "{struct.name}"')
                 if struct.members:
                     for member in struct.members:
                         member_name = member.get("name", "")
                         member_type = member.get("type", "")
                         lines.append(f'    # Member: {member_name} ({member_type})')
-                lines.append(f'    bv.define_user_data_var(0, struct)')
+                lines.append('    bv.define_user_data_var(0, struct)')
                 lines.append('')
 
         # Add cross-references

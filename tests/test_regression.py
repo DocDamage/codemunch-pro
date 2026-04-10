@@ -1,7 +1,5 @@
 """Tests for regression testing functionality."""
 
-import tempfile
-from pathlib import Path
 
 import pytest
 

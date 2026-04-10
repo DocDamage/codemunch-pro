@@ -210,7 +210,7 @@ class IntegrityChecker:
     def _check_orphaned_references(self) -> None:
         """Check for entities pointing to non-existent artifacts."""
         artifact_ids = self._get_all_artifact_ids()
-        entity_ids = self._get_all_entity_ids()
+        self._get_all_entity_ids()
 
         cursor = self.store._conn.cursor()
         cursor.execute(

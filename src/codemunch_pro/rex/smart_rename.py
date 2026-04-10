@@ -318,7 +318,7 @@ class RenameSuggester:
                 platform=self.platform,
             ))
         elif data_type == "buffer" and size > 0:
-            size_hint = f"{size}Byte" if size < 1024 else f"{size // 1024}K"
+            f"{size}Byte" if size < 1024 else f"{size // 1024}K"
             suggestions.append(RenameSuggestion(
                 suggested_name=f"g_{self._to_camel_case(current_name)}Buffer",
                 confidence=0.65,

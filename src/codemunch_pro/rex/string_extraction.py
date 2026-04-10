@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from codemunch_pro.rex.model import (
     AddressLocation,
@@ -302,14 +301,13 @@ class StringExtractor:
             List of cross-references
         """
         xrefs: list[StringXref] = []
-        string_addresses = {s.address for s in strings}
+        {s.address for s in strings}
         
         # Determine address range for valid references
         if address_range:
             min_addr, max_addr = address_range
         else:
-            min_addr = base_address
-            max_addr = base_address + len(data)
+            base_address + len(data)
         
         for string in strings:
             # Search for direct references (absolute addresses)

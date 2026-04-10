@@ -8,14 +8,12 @@ and CFG-based similarity.
 from __future__ import annotations
 
 import hashlib
-import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
 
     from codemunch_pro.rex.model import EntityRecord
 

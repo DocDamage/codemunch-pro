@@ -7,9 +7,8 @@ projects from predefined templates for various platforms.
 from __future__ import annotations
 
 import argparse
-import shutil
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -245,9 +244,9 @@ def init_command(args: argparse.Namespace) -> int:
         )
         
         print(f"Created {args.template} project: {project_path}")
-        print(f"\nNext steps:")
+        print("\nNext steps:")
         print(f"  cd {project_path.name}")
-        print(f"  codemunch-pro web  # Start the web interface")
+        print("  codemunch-pro web  # Start the web interface")
         
         return 0
         
@@ -256,7 +255,7 @@ def init_command(args: argparse.Namespace) -> int:
         return 1
     except FileExistsError as e:
         print(f"Error: {e}", file=sys.stderr)
-        print(f"Use a different path or remove the existing directory.", file=sys.stderr)
+        print("Use a different path or remove the existing directory.", file=sys.stderr)
         return 1
     except Exception as e:
         print(f"Error creating project: {e}", file=sys.stderr)

@@ -1,6 +1,5 @@
 """Tests for heat map generation functionality."""
 
-import pytest
 
 from codemunch_pro.rex.heat_map import (
     ColorScheme,
@@ -15,7 +14,6 @@ from codemunch_pro.rex import (
     AddressLocation,
     ArtifactRecord,
     EntityRecord,
-    EvidenceRecord,
     ReverseEngineeringBundle,
     ReverseEngineeringStore,
 )

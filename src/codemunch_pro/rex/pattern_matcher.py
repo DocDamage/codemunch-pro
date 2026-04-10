@@ -8,10 +8,8 @@ finding sequences in ROMs, memory dumps, and executable files.
 from __future__ import annotations
 
 import re
-import struct
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Callable
 
 
 class Endianness(Enum):
@@ -153,8 +151,8 @@ class BytePattern:
         # Check for range like "0-9" or "A-F"
         if "-" in content and len(content) == 3:
             start, end = content.split("-")
-            start_val = ord(start)
-            end_val = ord(end)
+            ord(start)
+            ord(end)
             
             # Create mask based on common ASCII ranges
             if start == "0" and end == "9":

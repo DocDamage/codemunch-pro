@@ -7,13 +7,11 @@ search-and-replace operations with progress tracking and resume capability.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import os
-import sqlite3
 import threading
-from collections import defaultdict
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -23,9 +21,7 @@ from codemunch_pro.rex.exporters import ExportOptions, get_exporter
 from codemunch_pro.rex.model import (
     AddressLocation,
     ArtifactRecord,
-    EdgeRecord,
     EntityRecord,
-    EvidenceRecord,
     ReverseEngineeringBundle,
 )
 

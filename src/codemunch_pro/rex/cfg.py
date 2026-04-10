@@ -12,7 +12,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from codemunch_pro.rex.model import AddressLocation, EntityRecord, EdgeRecord
+from codemunch_pro.rex.model import EntityRecord
 
 
 @dataclass

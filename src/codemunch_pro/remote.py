@@ -279,9 +279,11 @@ def _safe_extract_tarball(tarball_path: Path, dest: Path) -> None:
                 target.mkdir(parents=True, exist_ok=True)
             elif member.isfile():
                 target.parent.mkdir(parents=True, exist_ok=True)
-                with tar.extractfile(member) as src:
-                    if src:
-                        target.write_bytes(src.read())
+                src = tar.extractfile(member)
+                if src is None:
+                    continue
+                with src:
+                    target.write_bytes(src.read())
 
 
 def fetch_repo(

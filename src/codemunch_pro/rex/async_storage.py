@@ -15,9 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from codemunch_pro.rex.similarity import (
-        SimilarityIndex,
-    )
+    pass
 
 from codemunch_pro.rex.model import (
     AddressLocation,

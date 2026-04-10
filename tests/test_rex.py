@@ -1,6 +1,5 @@
 """Tests for the generic reverse-engineering model and adapter layer."""
 
-import json
 
 import pytest
 
@@ -467,7 +466,7 @@ class TestDebuggerSession:
         assert not session.is_connected
 
     def test_session_capture_management(self):
-        from codemunch_pro.rex.debugger import DebuggerSession, DebuggerState, ExecutionTrace
+        from codemunch_pro.rex.debugger import DebuggerSession, ExecutionTrace
 
         class MockSession(DebuggerSession):
             def attach(self, target: str, **kwargs):

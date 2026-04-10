@@ -273,10 +273,9 @@ class TestAnomalyDetector:
 
     def test_severity_filtering(self) -> None:
         """Test that min_severity filters anomalies correctly."""
-        detector = AnomalyDetector()
+        AnomalyDetector()
 
         # Create a mock excerpt with a timing check pattern
-        excerpt = "1000: RDTSC"
 
         # When filtering with WARNING, RDTSC (INFO) should be excluded
         # The test verifies the filtering logic exists
@@ -333,7 +332,7 @@ class TestBugPatternDetection:
 
     def test_null_pointer_patterns(self) -> None:
         """Test null pointer dereference patterns."""
-        detector = AnomalyDetector()
+        AnomalyDetector()
 
         # Check that null pointer patterns would be detected
         null_patterns = [
@@ -348,7 +347,7 @@ class TestBugPatternDetection:
 
     def test_unchecked_return_patterns(self) -> None:
         """Test unchecked return value patterns."""
-        detector = AnomalyDetector()
+        AnomalyDetector()
 
         unchecked_patterns = [
             r"CALL\s+.*malloc",

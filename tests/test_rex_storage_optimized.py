@@ -20,7 +20,6 @@ from codemunch_pro.rex.storage import (
     ReverseEngineeringStore,
     ConnectionPool,
     StatementCache,
-    LazyEntity,
 )
 
 try:
@@ -660,7 +659,7 @@ class TestLargeProjectPerformance:
         # Test graph traversal performance
         import time
         start = time.time()
-        result = store.traverse_entity_graph(
+        store.traverse_entity_graph(
             entity_ids=["node:0"],
             depth=3,
             edge_limit=100

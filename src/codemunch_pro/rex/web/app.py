@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-import os
 from pathlib import Path
 from typing import Any
 
@@ -35,15 +33,7 @@ def create_app(db_path: Path | str | None = None) -> FastAPI:
 
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
     
-    # Create Jinja2 environment with disabled caching to avoid unhashable type errors
-    from jinja2 import Environment, FileSystemLoader, select_autoescape
-    jinja_env = Environment(
-        loader=FileSystemLoader(str(templates_dir)),
-        autoescape=select_autoescape(['html', 'xml']),
-        cache_size=0,  # Disable caching to avoid unhashable type issues
-        auto_reload=True,
-    )
-    templates = Jinja2Templates(env=jinja_env)
+    templates = Jinja2Templates(directory=str(templates_dir))
 
     # Helper to get a store instance (for thread safety)
     def get_store() -> ReverseEngineeringStore:

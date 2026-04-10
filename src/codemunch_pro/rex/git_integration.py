@@ -6,7 +6,6 @@ for RE projects, with support for tracking manifests, labels, notes, and symbols
 
 from __future__ import annotations
 
-import json
 import re
 import subprocess
 from dataclasses import dataclass, field
@@ -15,7 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    pass
 
 
 @dataclass
@@ -371,7 +370,7 @@ class REProjectRepo:
             if len(line) >= 40 and line[40:41] == " ":
                 parts = line.split(" ")
                 commit_hash = parts[0]
-                original_line = parts[1] if len(parts) > 1 else "0"
+                parts[1] if len(parts) > 1 else "0"
                 final_line = parts[2] if len(parts) > 2 else "0"
 
                 current_commit = {"hash": commit_hash}

@@ -1,5 +1,6 @@
 """Plugins for reverse-engineering importers."""
 
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -7,6 +8,9 @@ from codemunch_pro.rex.plugins.binja_importer import BinaryNinjaImporter
 from codemunch_pro.rex.plugins.ghidra_importer import GhidraImporter
 from codemunch_pro.rex.plugins.ida_importer import IdaProImporter
 from codemunch_pro.rex.plugins.manifest_importer import ChronoTriggerManifestImporter
+
+
+logger = logging.getLogger(__name__)
 
 
 class PluginRegistry:
@@ -21,23 +25,23 @@ class PluginRegistry:
         try:
             manifest_importer = ChronoTriggerManifestImporter()
             self._importers[manifest_importer.name] = manifest_importer
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Failed to initialize manifest importer: %s", exc)
         try:
             binja_importer = BinaryNinjaImporter()
             self._importers[binja_importer.name] = binja_importer
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Failed to initialize Binary Ninja importer: %s", exc)
         try:
             ida_importer = IdaProImporter()
             self._importers[ida_importer.name] = ida_importer
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Failed to initialize IDA importer: %s", exc)
         try:
             ghidra_importer = GhidraImporter()
             self._importers[ghidra_importer.name] = ghidra_importer
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Failed to initialize Ghidra importer: %s", exc)
 
     def get_importer(self, name: str) -> Any | None:
         """Get an importer by name."""

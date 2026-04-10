@@ -7,9 +7,8 @@ string field detection, and nested structure detection.
 
 from __future__ import annotations
 
-import re
 import struct
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field as dataclass_field
 from enum import Enum, auto
 from typing import TYPE_CHECKING, Any
 
@@ -63,8 +62,8 @@ class StructureField:
     element_size: int = 0
     target_address: int | None = None
     string_encoding: str = ""
-    nested_fields: list[StructureField] = field(default_factory=list)
-    attributes: dict[str, Any] = field(default_factory=dict)
+    nested_fields: list[StructureField] = dataclass_field(default_factory=list)
+    attributes: dict[str, Any] = dataclass_field(default_factory=dict)
     
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary representation."""
@@ -100,11 +99,11 @@ class DataStructure:
     name: str = ""
     address: int = 0
     size: int = 0
-    fields: list[StructureField] = field(default_factory=list)
+    fields: list[StructureField] = dataclass_field(default_factory=list)
     address_space: str = "flat"
     confidence: float = 0.0
     alignment: int = 1
-    attributes: dict[str, Any] = field(default_factory=dict)
+    attributes: dict[str, Any] = dataclass_field(default_factory=dict)
     
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary representation."""

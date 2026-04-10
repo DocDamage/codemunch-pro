@@ -1,10 +1,7 @@
 """Tests for remote repo fetching — URL parsing, tarball extraction, caching."""
 
-import json
 import tarfile
-import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 

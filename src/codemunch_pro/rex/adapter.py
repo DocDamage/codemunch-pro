@@ -11,9 +11,6 @@ from typing import Protocol
 from codemunch_pro.rex.model import (
     AddressLocation,
     ArtifactRecord,
-    EdgeRecord,
-    EntityRecord,
-    EvidenceRecord,
     ReverseEngineeringBundle,
 )
 

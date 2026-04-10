@@ -13,8 +13,18 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from pathlib import Path
 from typing import Any, Protocol
+
+DEBUGGER_RECOVERABLE_ERRORS = (
+    BrokenPipeError,
+    ConnectionError,
+    OSError,
+    RuntimeError,
+    subprocess.SubprocessError,
+    TimeoutError,
+    TypeError,
+    ValueError,
+)
 
 
 class DebuggerState(Enum):
@@ -453,7 +463,7 @@ class GDBSession(DebuggerSession):
             else:
                 # Local executable
                 return self._attach_local(target, **kwargs)
-        except Exception as e:
+        except DEBUGGER_RECOVERABLE_ERRORS as e:
             self._state = DebuggerState.ERROR
             self._error_message = str(e)
             return False
@@ -466,7 +476,7 @@ class GDBSession(DebuggerSession):
             self._socket.connect((self._host, self._port))
             self._state = DebuggerState.STOPPED
             return True
-        except Exception as e:
+        except DEBUGGER_RECOVERABLE_ERRORS as e:
             self._state = DebuggerState.ERROR
             self._error_message = f"Failed to connect to {self._host}:{self._port}: {e}"
             return False
@@ -488,7 +498,7 @@ class GDBSession(DebuggerSession):
             )
             self._state = DebuggerState.STOPPED
             return True
-        except Exception as e:
+        except DEBUGGER_RECOVERABLE_ERRORS as e:
             self._state = DebuggerState.ERROR
             self._error_message = f"Failed to start GDB: {e}"
             return False
@@ -505,7 +515,7 @@ class GDBSession(DebuggerSession):
                 self._process = None
             self._state = DebuggerState.DISCONNECTED
             return True
-        except Exception as e:
+        except DEBUGGER_RECOVERABLE_ERRORS as e:
             self._error_message = f"Error during detach: {e}"
             return False
 
@@ -518,7 +528,7 @@ class GDBSession(DebuggerSession):
         try:
             # Placeholder: actual implementation would send GDB command
             return MemoryRead(address, b"\x00" * size, True)
-        except Exception as e:
+        except DEBUGGER_RECOVERABLE_ERRORS as e:
             return MemoryRead(address, b"", False, str(e))
 
     def write_memory(self, address: int, data: bytes) -> bool:
@@ -529,7 +539,7 @@ class GDBSession(DebuggerSession):
         try:
             # Placeholder: actual implementation would send GDB command
             return True
-        except Exception as e:
+        except DEBUGGER_RECOVERABLE_ERRORS as e:
             self._error_message = str(e)
             return False
 
@@ -635,7 +645,7 @@ class LLDBSession(DebuggerSession):
             self._error_message = "Failed to create target"
             return False
 
-        except Exception as e:
+        except DEBUGGER_RECOVERABLE_ERRORS as e:
             self._state = DebuggerState.ERROR
             self._error_message = str(e)
             return False
@@ -653,7 +663,7 @@ class LLDBSession(DebuggerSession):
             )
             self._state = DebuggerState.STOPPED
             return True
-        except Exception as e:
+        except DEBUGGER_RECOVERABLE_ERRORS as e:
             self._state = DebuggerState.ERROR
             self._error_message = f"Failed to start LLDB: {e}"
             return False
@@ -670,7 +680,7 @@ class LLDBSession(DebuggerSession):
                 self._process.wait(timeout=5)
             self._state = DebuggerState.DISCONNECTED
             return True
-        except Exception as e:
+        except DEBUGGER_RECOVERABLE_ERRORS as e:
             self._error_message = f"Error during detach: {e}"
             return False
 
@@ -682,7 +692,7 @@ class LLDBSession(DebuggerSession):
         try:
             # Placeholder: actual implementation would use LLDB API
             return MemoryRead(address, b"\x00" * size, True)
-        except Exception as e:
+        except DEBUGGER_RECOVERABLE_ERRORS as e:
             return MemoryRead(address, b"", False, str(e))
 
     def write_memory(self, address: int, data: bytes) -> bool:
@@ -693,7 +703,7 @@ class LLDBSession(DebuggerSession):
         try:
             # Placeholder: actual implementation would use LLDB API
             return True
-        except Exception as e:
+        except DEBUGGER_RECOVERABLE_ERRORS as e:
             self._error_message = str(e)
             return False
 
@@ -827,7 +837,7 @@ class EmulatorSession(DebuggerSession):
             self._error_message = "No RPC client or URL provided"
             return False
 
-        except Exception as e:
+        except DEBUGGER_RECOVERABLE_ERRORS as e:
             self._state = DebuggerState.ERROR
             self._error_message = str(e)
             return False
@@ -846,7 +856,7 @@ class EmulatorSession(DebuggerSession):
                 # Generic connection
                 self._state = DebuggerState.STOPPED
                 return True
-        except Exception as e:
+        except DEBUGGER_RECOVERABLE_ERRORS as e:
             self._error_message = f"RPC connection failed: {e}"
             return False
 
@@ -864,7 +874,7 @@ class EmulatorSession(DebuggerSession):
             self._socket.connect((host, port))
             self._state = DebuggerState.STOPPED
             return True
-        except Exception as e:
+        except DEBUGGER_RECOVERABLE_ERRORS as e:
             self._error_message = f"Failed to connect to mGBA: {e}"
             return False
 
@@ -883,7 +893,7 @@ class EmulatorSession(DebuggerSession):
                     return True
             self._error_message = "Mesen API status check failed"
             return False
-        except Exception as e:
+        except DEBUGGER_RECOVERABLE_ERRORS as e:
             self._error_message = f"Failed to connect to Mesen: {e}"
             return False
 
@@ -897,7 +907,7 @@ class EmulatorSession(DebuggerSession):
             self._socket.connect((host, port))
             self._state = DebuggerState.STOPPED
             return True
-        except Exception as e:
+        except DEBUGGER_RECOVERABLE_ERRORS as e:
             self._error_message = f"Failed to connect to BizHawk: {e}"
             return False
 
@@ -908,7 +918,7 @@ class EmulatorSession(DebuggerSession):
                 self._socket.close()
             self._state = DebuggerState.DISCONNECTED
             return True
-        except Exception as e:
+        except DEBUGGER_RECOVERABLE_ERRORS as e:
             self._error_message = f"Error during detach: {e}"
             return False
 
@@ -930,7 +940,7 @@ class EmulatorSession(DebuggerSession):
             else:
                 # Generic placeholder
                 return MemoryRead(address, b"\x00" * size, True)
-        except Exception as e:
+        except DEBUGGER_RECOVERABLE_ERRORS as e:
             return MemoryRead(address, b"", False, str(e))
 
     def _read_memory_mgba(self, address: int, size: int) -> MemoryRead:
@@ -962,7 +972,7 @@ class EmulatorSession(DebuggerSession):
             if self._rpc_client:
                 return self._rpc_client.write_memory(address, data)
             return True  # Placeholder
-        except Exception as e:
+        except DEBUGGER_RECOVERABLE_ERRORS as e:
             self._error_message = str(e)
             return False
 
@@ -1003,7 +1013,7 @@ class EmulatorSession(DebuggerSession):
                 return self._rpc_client.run()
             self._state = DebuggerState.RUNNING
             return True
-        except Exception as e:
+        except DEBUGGER_RECOVERABLE_ERRORS as e:
             self._error_message = str(e)
             return False
 
@@ -1017,7 +1027,7 @@ class EmulatorSession(DebuggerSession):
                 return self._rpc_client.step()
             self._state = DebuggerState.STOPPED
             return True
-        except Exception as e:
+        except DEBUGGER_RECOVERABLE_ERRORS as e:
             self._error_message = str(e)
             return False
 
@@ -1035,7 +1045,7 @@ class EmulatorSession(DebuggerSession):
                     general={k: v for k, v in regs.items() if k not in ("pc", "sp")},
                 )
             return RegisterSet(pc=0, sp=0)
-        except Exception as e:
+        except DEBUGGER_RECOVERABLE_ERRORS as e:
             self._error_message = str(e)
             return None
 

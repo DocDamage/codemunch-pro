@@ -1,22 +1,18 @@
 """IDA Pro database importer.
 
-This module provides an importer for IDA Pro database files (.i64 for 64-bit,
-.idb for 32-bit). It extracts functions, data items, structures, enums,
-cross-references, comments, and segments from IDA databases.
-
-Note: IDA Pro uses a proprietary database format. This importer supports:
-1. Direct parsing when IDA Pro is installed and idaapi/idautils are available
-2. JSON export files from IDA Pro (File > Produce file > Create JSON file)
-3. Stub implementation with TODO comments for standalone parsing
+This module imports IDA Pro artifacts from:
+1. JSON exports produced by IDA Pro.
+2. Live IDA Python APIs when running inside IDA.
+3. Standalone parsing via python-idb when available.
 """
 
 from __future__ import annotations
 
 import json
-import struct
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 from codemunch_pro.rex.model import (
     AddressLocation,
@@ -27,32 +23,29 @@ from codemunch_pro.rex.model import (
     ReverseEngineeringBundle,
 )
 
+logger = logging.getLogger(__name__)
+IDA_RECOVERABLE_ERRORS = (AttributeError, KeyError, OSError, RuntimeError, TypeError, ValueError)
+
 
 @dataclass
 class IdaProImporter:
-    """Importer for IDA Pro database files (.i64, .idb).
-    
-    Extracts reverse engineering artifacts including functions, data items,
-    structures, enums, cross-references, comments, and segments.
-    
-    Supports:
-    - Direct IDA database files (.i64, .idb) when IDA API is available
-    - JSON export files from IDA Pro
-    """
+    """Importer for IDA Pro database files (.i64, .idb, JSON exports)."""
 
     name: str = "ida-pro"
     _ida_available: bool = field(init=False, repr=False, default=False)
     _idaapi: Any = field(init=False, repr=False, default=None)
     _idautils: Any = field(init=False, repr=False, default=None)
     _idc: Any = field(init=False, repr=False, default=None)
+    _active_artifact_id: str = field(init=False, repr=False, default="")
+    _ida_entity_ids_by_addr: dict[int, str] = field(init=False, repr=False, default_factory=dict)
 
     def __post_init__(self) -> None:
-        """Initialize and check for IDA Python API availability."""
+        """Initialize and detect IDA runtime availability."""
         try:
-            # Try to import IDA Python modules
             import idaapi  # type: ignore
             import idautils  # type: ignore
             import idc  # type: ignore
+
             self._idaapi = idaapi
             self._idautils = idautils
             self._idc = idc
@@ -61,40 +54,45 @@ class IdaProImporter:
             self._ida_available = False
 
     def supports(self, path: Path) -> bool:
-        """Check if this importer supports the given path.
-        
-        Supports:
-        - .i64: IDA 64-bit database files
-        - .idb: IDA 32-bit database files
-        - .json: JSON export files from IDA Pro
-        """
+        """Check whether this importer supports the input path."""
         suffix = path.suffix.lower()
         if suffix == ".json":
-            # Check if it's an IDA JSON export
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
-                # IDA JSON exports typically have specific keys
-                return any(
+                return isinstance(data, dict) and any(
                     key in data
-                    for key in ("functions", "structs", "enums", "segments", "idb")
+                    for key in (
+                        "functions",
+                        "funcs",
+                        "data",
+                        "structs",
+                        "structures",
+                        "enums",
+                        "segments",
+                        "xrefs",
+                        "comments",
+                        "idb",
+                    )
                 )
-            except (json.JSONDecodeError, IOError):
+            except (json.JSONDecodeError, OSError):
                 return False
+
         return suffix in (".i64", ".idb")
 
     def ingest(self, path: Path) -> ReverseEngineeringBundle:
-        """Ingest an IDA Pro database file and extract all artifacts.
-        
-        Args:
-            path: Path to the .i64, .idb, or JSON export file
-            
-        Returns:
-            ReverseEngineeringBundle containing all extracted entities
-        """
+        """Ingest an IDA source file into a reverse-engineering bundle."""
+        artifact_id = path.as_posix()
+        self._active_artifact_id = artifact_id
+        self._ida_entity_ids_by_addr.clear()
+
         artifact = ArtifactRecord(
-            artifact_id=path.as_posix(),
+            artifact_id=artifact_id,
             kind="ida-database",
-            path=path.as_posix(),
+            path=artifact_id,
+            title=path.name,
+            metadata={
+                "platform_guess": self._detect_platform(path),
+            },
         )
 
         entities: list[EntityRecord] = []
@@ -102,17 +100,14 @@ class IdaProImporter:
         edges: list[EdgeRecord] = []
 
         suffix = path.suffix.lower()
-
         if suffix == ".json":
-            # Parse JSON export from IDA Pro
             self._parse_json_export(path, entities, evidence, edges)
         elif self._ida_available:
-            # Use IDA Python API for direct database access
             self._parse_with_ida(path, entities, evidence, edges)
         else:
-            # Stub implementation for standalone parsing
             self._parse_standalone(path, entities, evidence, edges)
 
+        self._active_artifact_id = ""
         return ReverseEngineeringBundle(
             artifacts=[artifact],
             entities=entities,
@@ -132,116 +127,168 @@ class IdaProImporter:
         evidence: list[EvidenceRecord],
         edges: list[EdgeRecord],
     ) -> None:
-        """Parse a JSON export file from IDA Pro.
-        
-        TODO: Implement full JSON export parsing
-        This is a stub that demonstrates the expected structure.
-        """
-        data = json.loads(path.read_text(encoding="utf-8"))
+        """Parse a JSON export from IDA Pro."""
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning("Failed to parse IDA JSON export %s: %s", path, exc)
+            entities.append(
+                EntityRecord(
+                    entity_id=f"entity:ida-json:error:{path.name}",
+                    kind="import-error",
+                    name=path.name,
+                    artifact_id=self._active_artifact_id,
+                    attributes={"error": str(exc)},
+                )
+            )
+            return
 
-        # Extract functions
-        for i, func in enumerate(data.get("functions", [])):
-            func_addr = func.get("ea", 0)
-            func_name = func.get("name", "unnamed")
+        if not isinstance(data, dict):
+            entities.append(
+                EntityRecord(
+                    entity_id=f"entity:ida-json:invalid:{path.name}",
+                    kind="import-error",
+                    name=path.name,
+                    artifact_id=self._active_artifact_id,
+                    attributes={"error": "JSON root must be an object"},
+                )
+            )
+            return
+
+        by_addr: dict[int, str] = {}
+
+        for index, func in enumerate(self._iter_dict_items(data, ("functions", "funcs"))):
+            addr = self._extract_address(func, ("ea", "start_ea", "start", "address"))
+            name = self._extract_name(func, f"sub_{index:04X}")
+            if addr is None:
+                continue
+
+            func_id = f"entity:function:{addr:X}"
+            if func_id in {e.entity_id for e in entities}:
+                continue
+
             entity = EntityRecord(
-                entity_id=f"entity:function:{func_addr:X}:{i}:{func_name}",
+                entity_id=func_id,
                 kind="function",
-                name=func_name,
-                canonical_ref=f"0x{func_addr:X}",
-                location=self._create_location(
-                    func_addr, func.get("size", 0)
-                ),
+                name=name,
+                artifact_id=self._active_artifact_id,
+                canonical_ref=f"0x{addr:X}",
+                location=self._create_location(addr, self._extract_int(func.get("size"), 0)),
                 attributes={
-                    "flags": func.get("flags", 0),
+                    "flags": self._extract_int(func.get("flags"), 0),
                     "type": "function",
                 },
             )
             entities.append(entity)
+            by_addr[addr] = func_id
 
-        # Extract data items
-        for item in data.get("data", []):
+        for item in self._iter_dict_items(data, ("data", "globals", "items")):
+            addr = self._extract_address(item, ("ea", "address", "start"))
+            if addr is None:
+                continue
+            item_id = f"entity:data:{addr:X}"
+            if item_id in {e.entity_id for e in entities}:
+                continue
+
+            name = self._extract_name(item, f"data_{addr:X}")
             entity = EntityRecord(
-                entity_id=f"entity:data:{item.get('ea', 'unknown')}",
+                entity_id=item_id,
                 kind="data",
-                name=item.get("name", ""),
-                canonical_ref=f"0x{item.get('ea', 0):X}",
-                location=self._create_location(
-                    item.get("ea", 0), item.get("size", 0)
-                ),
+                name=name,
+                artifact_id=self._active_artifact_id,
+                canonical_ref=f"0x{addr:X}",
+                location=self._create_location(addr, self._extract_int(item.get("size"), 0)),
                 attributes={
-                    "data_type": item.get("type", "unknown"),
+                    "data_type": str(item.get("type", "unknown")),
                 },
             )
             entities.append(entity)
+            by_addr[addr] = item_id
 
-        # Extract structures
-        for struct in data.get("structs", []):
-            entity = EntityRecord(
-                entity_id=f"entity:struct:{struct.get('name', 'unknown')}",
-                kind="structure",
-                name=struct.get("name", "unnamed"),
-                attributes={
-                    "size": struct.get("size", 0),
-                    "members": struct.get("members", []),
-                },
+        for struct in self._iter_dict_items(data, ("structs", "structures")):
+            name = self._extract_name(struct, "unnamed_struct")
+            entities.append(
+                EntityRecord(
+                    entity_id=f"entity:struct:{name}",
+                    kind="structure",
+                    name=name,
+                    artifact_id=self._active_artifact_id,
+                    attributes={
+                        "size": self._extract_int(struct.get("size"), 0),
+                        "members": struct.get("members", []),
+                    },
+                )
             )
-            entities.append(entity)
 
-        # Extract enums
-        for enum in data.get("enums", []):
-            entity = EntityRecord(
-                entity_id=f"entity:enum:{enum.get('name', 'unknown')}",
-                kind="enum",
-                name=enum.get("name", "unnamed"),
-                attributes={
-                    "values": enum.get("values", {}),
-                },
+        for enum in self._iter_dict_items(data, ("enums",)):
+            name = self._extract_name(enum, "unnamed_enum")
+            entities.append(
+                EntityRecord(
+                    entity_id=f"entity:enum:{name}",
+                    kind="enum",
+                    name=name,
+                    artifact_id=self._active_artifact_id,
+                    attributes={"values": enum.get("values", {})},
+                )
             )
-            entities.append(entity)
 
-        # Extract segments
-        for seg in data.get("segments", []):
-            entity = EntityRecord(
-                entity_id=f"entity:segment:{seg.get('name', 'unknown')}",
-                kind="segment",
-                name=seg.get("name", "unnamed"),
-                location=self._create_location(
-                    seg.get("start", 0),
-                    seg.get("end", 0) - seg.get("start", 0),
-                ),
-                attributes={
-                    "permissions": seg.get("perm", "---"),
-                    "class": seg.get("class", ""),
-                },
+        for seg in self._iter_dict_items(data, ("segments",)):
+            start = self._extract_address(seg, ("start", "start_ea", "ea", "address"))
+            end = self._extract_address(seg, ("end", "end_ea"))
+            if start is None:
+                continue
+            size = max(0, (end if end is not None else start) - start)
+            name = self._extract_name(seg, f"seg_{start:X}")
+            entities.append(
+                EntityRecord(
+                    entity_id=f"entity:segment:{name}:{start:X}",
+                    kind="segment",
+                    name=name,
+                    artifact_id=self._active_artifact_id,
+                    location=self._create_location(start, size),
+                    attributes={
+                        "permissions": str(seg.get("perm", "---")),
+                        "class": str(seg.get("class", "")),
+                    },
+                )
             )
-            entities.append(entity)
 
-        # Extract cross-references as edges
-        for xref in data.get("xrefs", []):
-            edge = EdgeRecord(
-                edge_id=f"edge:xref:{xref.get('from', 0)}:{xref.get('to', 0)}",
-                kind="cross-reference",
-                source_entity_id=f"entity:function:{xref.get('from', 0)}",
-                target_entity_id=f"entity:function:{xref.get('to', 0)}",
-                attributes={
-                    "type": xref.get("type", "unknown"),
-                },
-            )
-            edges.append(edge)
+        for idx, xref in enumerate(self._iter_dict_items(data, ("xrefs", "crossrefs"))):
+            src_addr = self._extract_address(xref, ("from", "frm", "src", "source"))
+            dst_addr = self._extract_address(xref, ("to", "dst", "target"))
+            if src_addr is None or dst_addr is None:
+                continue
 
-        # Extract comments as evidence
-        for comment in data.get("comments", []):
-            ev = EvidenceRecord(
-                evidence_id=f"evidence:comment:{comment.get('ea', 0)}",
-                kind="comment",
-                artifact_id=path.as_posix(),
-                entity_ids=(f"entity:function:{comment.get('ea', 0)}",),
-                excerpt=comment.get("text", ""),
-                attributes={
-                    "type": comment.get("type", "regular"),  # regular, repeatable, etc.
-                },
+            src_id = self._ensure_reference_entity(src_addr, entities, by_addr)
+            dst_id = self._ensure_reference_entity(dst_addr, entities, by_addr)
+            edges.append(
+                EdgeRecord(
+                    edge_id=f"edge:xref:{src_addr:X}:{dst_addr:X}:{idx}",
+                    kind="cross-reference",
+                    source_entity_id=src_id,
+                    target_entity_id=dst_id,
+                    attributes={"type": str(xref.get("type", "unknown"))},
+                )
             )
-            evidence.append(ev)
+
+        for idx, comment in enumerate(self._iter_dict_items(data, ("comments",))):
+            addr = self._extract_address(comment, ("ea", "address", "at"))
+            text = str(comment.get("text", "")).strip()
+            if addr is None or not text:
+                continue
+
+            entity_id = self._ensure_reference_entity(addr, entities, by_addr)
+            evidence.append(
+                EvidenceRecord(
+                    evidence_id=f"evidence:comment:{addr:X}:{idx}",
+                    kind="comment",
+                    artifact_id=self._active_artifact_id,
+                    entity_ids=(entity_id,),
+                    location=self._create_location(addr, 1),
+                    excerpt=text,
+                    attributes={"type": str(comment.get("type", "regular"))},
+                )
+            )
 
     def _parse_with_ida(
         self,
@@ -250,22 +297,27 @@ class IdaProImporter:
         evidence: list[EvidenceRecord],
         edges: list[EdgeRecord],
     ) -> None:
-        """Parse IDA database using IDA Python API.
-        
-        This method is called when idaapi/idautils are available.
-        
-        TODO: Implement full IDA API integration
-        """
-        # Note: In a real implementation, this would:
-        # 1. Open the database using idaapi.open_database()
-        # 2. Iterate through functions using idautils.Functions()
-        # 3. Extract data items, structures, enums
-        # 4. Build cross-reference graph
-        # 5. Extract comments
-        # 6. Extract segment information
-        
-        # Stub implementation
-        pass  # pragma: no cover
+        """Parse with live IDA Python APIs (inside IDA runtime)."""
+        entities.append(
+            EntityRecord(
+                entity_id=f"entity:ida-runtime:{path.name}",
+                kind="ida-database",
+                name=path.name,
+                artifact_id=self._active_artifact_id,
+                attributes={
+                    "platform": self._detect_platform(path),
+                    "mode": "ida-python",
+                },
+            )
+        )
+
+        self._extract_functions_with_ida(entities, evidence)
+        self._extract_data_with_ida(entities, evidence)
+        self._extract_structures_with_ida(entities)
+        self._extract_enums_with_ida(entities)
+        self._extract_segments_with_ida(entities)
+        self._extract_comments_with_ida(evidence)
+        self._extract_xrefs_with_ida(entities, edges)
 
     def _parse_standalone(
         self,
@@ -274,36 +326,29 @@ class IdaProImporter:
         evidence: list[EvidenceRecord],
         edges: list[EdgeRecord],
     ) -> None:
-        """Parse IDA database without IDA API (standalone mode).
-        
-        IDA Pro uses a proprietary database format. Standalone parsing
-        would require reverse engineering the format or using a library
-        like python-idb (https://github.com/williballenthin/python-idb).
-        
-        TODO: Implement standalone parsing using python-idb or similar
-        """
-        # Check if python-idb is available
+        """Parse in standalone mode, preferring python-idb when available."""
         try:
             import idb  # type: ignore
+
             self._parse_with_python_idb(path, entities, evidence, edges, idb)
             return
         except ImportError:
-            pass
+            logger.debug("python-idb not installed; using metadata-only IDA fallback")
 
-        # If no standalone library is available, create placeholder entities
-        # indicating that the file was recognized but couldn't be parsed
-        entity = EntityRecord(
-            entity_id=f"entity:ida-database:{path.as_posix()}",
-            kind="ida-database",
-            name=path.name,
-            canonical_ref=path.as_posix(),
-            attributes={
-                "note": "IDA database detected but parsing requires IDA Pro or python-idb",
-                "parsing_status": "stub",
-                "size": path.stat().st_size if path.exists() else 0,
-            },
+        entities.append(
+            EntityRecord(
+                entity_id=f"entity:ida-database:{path.as_posix()}",
+                kind="ida-database",
+                name=path.name,
+                artifact_id=self._active_artifact_id,
+                canonical_ref=path.as_posix(),
+                attributes={
+                    "parsing_status": "metadata-only",
+                    "size": path.stat().st_size if path.exists() else 0,
+                    "platform": self._detect_platform(path),
+                },
+            )
         )
-        entities.append(entity)
 
     def _parse_with_python_idb(
         self,
@@ -313,29 +358,77 @@ class IdaProImporter:
         edges: list[EdgeRecord],
         idb_module: Any,
     ) -> None:
-        """Parse IDA database using python-idb library.
-        
-        TODO: Implement python-idb integration
-        """
-        # This would use the python-idb library to parse the database
-        # without requiring IDA Pro to be installed
-        pass  # pragma: no cover
+        """Parse with python-idb using a tolerant best-effort adapter."""
+        opened = False
+        db_obj: Any = None
+
+        from_file = getattr(idb_module, "from_file", None)
+        if callable(from_file):
+            try:
+                maybe_ctx = from_file(path.as_posix())
+                if hasattr(maybe_ctx, "__enter__") and hasattr(maybe_ctx, "__exit__"):
+                    with maybe_ctx as handle:
+                        db_obj = handle
+                        opened = True
+                        self._extract_python_idb_content(db_obj, entities)
+                else:
+                    db_obj = maybe_ctx
+                    opened = True
+                    self._extract_python_idb_content(db_obj, entities)
+            except IDA_RECOVERABLE_ERRORS as exc:
+                logger.debug("python-idb parsing failed for %s: %s", path, exc)
+
+        entities.append(
+            EntityRecord(
+                entity_id=f"entity:ida-python-idb:{path.name}",
+                kind="ida-database",
+                name=path.name,
+                artifact_id=self._active_artifact_id,
+                attributes={
+                    "backend": "python-idb",
+                    "opened": opened,
+                    "platform": self._detect_platform(path),
+                    "db_type": type(db_obj).__name__ if db_obj is not None else "unknown",
+                },
+            )
+        )
+
+    def _extract_python_idb_content(self, db_obj: Any, entities: list[EntityRecord]) -> None:
+        """Extract function-like items from a python-idb object when possible."""
+        candidates: Iterable[Any] = ()
+        for attr in ("functions", "funcs", "Functions"):
+            value = getattr(db_obj, attr, None)
+            if callable(value):
+                try:
+                    value = value()
+                except IDA_RECOVERABLE_ERRORS:
+                    continue
+            if isinstance(value, Iterable) and not isinstance(value, (str, bytes, dict)):
+                candidates = value
+                break
+
+        for idx, item in enumerate(candidates):
+            addr = self._extract_address(item, ("ea", "start_ea", "start", "address"))
+            if addr is None:
+                continue
+            name = self._extract_name(item, f"sub_{idx:04X}")
+            entities.append(
+                EntityRecord(
+                    entity_id=f"entity:function:{addr:X}",
+                    kind="function",
+                    name=name,
+                    artifact_id=self._active_artifact_id,
+                    canonical_ref=f"0x{addr:X}",
+                    location=self._create_location(addr, self._extract_int(getattr(item, "size", None), 0)),
+                    attributes={"source": "python-idb"},
+                )
+            )
 
     def _create_location(self, address: int, size: int) -> AddressLocation | None:
-        """Create an AddressLocation for the given address and size.
-        
-        Args:
-            address: Start address
-            size: Size in bytes
-            
-        Returns:
-            AddressLocation or None if address is invalid
-        """
+        """Create a location object from an address and byte size."""
         if address == 0 and size == 0:
             return None
-        
-        # Determine address space based on address value
-        # This is a heuristic and may need adjustment for specific platforms
+
         address_space = "ida-virtual"
         if address < 0x10000:
             address_space = "ida-zero-page"
@@ -343,27 +436,42 @@ class IdaProImporter:
             address_space = "ida-low"
         elif address >= 0x8000000000000000:
             address_space = "ida-kernel"
-        
+
+        span = max(1, size)
         return AddressLocation(
             address_space=address_space,
             start=address,
-            end=address + size - 1 if size > 0 else address,
+            end=address + span - 1,
             display=f"0x{address:X}",
         )
 
     def _detect_platform(self, path: Path) -> str:
-        """Detect the target platform from the IDA database.
-        
-        TODO: Implement platform detection
-        This would examine the database to determine:
-        - Processor type (x86, ARM, MIPS, etc.)
-        - Address size (32-bit vs 64-bit)
-        - Operating system
-        
-        Returns:
-            Platform identifier string
-        """
-        # Stub implementation
+        """Detect the likely target platform from filename/extension/JSON metadata."""
+        suffix = path.suffix.lower()
+        name = path.name.lower()
+
+        if suffix == ".i64":
+            return "x86-64"
+        if suffix == ".idb":
+            return "x86-32"
+
+        if suffix == ".json":
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(data, dict):
+                    for key in ("processor", "arch", "architecture", "platform"):
+                        value = data.get(key)
+                        if isinstance(value, str) and value.strip():
+                            return value.strip().lower()
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        if "arm" in name:
+            return "arm"
+        if "mips" in name:
+            return "mips"
+        if "ppc" in name or "powerpc" in name:
+            return "powerpc"
         return "unknown"
 
     def _extract_functions_with_ida(
@@ -371,89 +479,338 @@ class IdaProImporter:
         entities: list[EntityRecord],
         evidence: list[EvidenceRecord],
     ) -> None:
-        """Extract functions using IDA API.
-        
-        TODO: Implement function extraction
-        Extracts:
-        - Function name
-        - Start address and size
-        - Function flags (thumb, etc.)
-        - Local variables
-        - Stack frame information
-        """
-        pass  # pragma: no cover
+        """Extract functions using IDA APIs when available."""
+        if self._idautils is None or self._idc is None:
+            return
+
+        try:
+            functions = list(self._idautils.Functions())
+        except IDA_RECOVERABLE_ERRORS as exc:
+            logger.debug("IDA function extraction failed: %s", exc)
+            return
+
+        for ea in functions:
+            try:
+                addr = int(ea)
+                name = str(self._idc.get_func_name(addr) or f"sub_{addr:X}")
+                end = self._extract_int(self._idc.get_func_attr(addr, self._idc.FUNCATTR_END), addr + 1)
+                size = max(1, end - addr)
+                entity_id = f"entity:function:{addr:X}"
+                entities.append(
+                    EntityRecord(
+                        entity_id=entity_id,
+                        kind="function",
+                        name=name,
+                        artifact_id=self._active_artifact_id,
+                        canonical_ref=f"0x{addr:X}",
+                        location=self._create_location(addr, size),
+                        attributes={"source": "idaapi"},
+                    )
+                )
+                self._ida_entity_ids_by_addr[addr] = entity_id
+
+                comment = self._idc.get_func_cmt(addr, False)
+                if isinstance(comment, str) and comment.strip():
+                    evidence.append(
+                        EvidenceRecord(
+                            evidence_id=f"evidence:func-comment:{addr:X}",
+                            kind="comment",
+                            artifact_id=self._active_artifact_id,
+                            entity_ids=(entity_id,),
+                            location=self._create_location(addr, 1),
+                            excerpt=comment.strip(),
+                            attributes={"type": "function"},
+                        )
+                    )
+            except IDA_RECOVERABLE_ERRORS as exc:
+                logger.debug("Skipping function %s: %s", ea, exc)
 
     def _extract_data_with_ida(
         self,
         entities: list[EntityRecord],
         evidence: list[EvidenceRecord],
     ) -> None:
-        """Extract data items using IDA API.
-        
-        TODO: Implement data extraction
-        Extracts:
-        - Data names and addresses
-        - Data types (byte, word, dword, etc.)
-        - Array information
-        - String literals
-        """
-        pass  # pragma: no cover
+        """Extract named data symbols from IDA APIs when available."""
+        if self._idautils is None or self._idc is None:
+            return
+
+        names_iter = getattr(self._idautils, "Names", None)
+        if not callable(names_iter):
+            return
+
+        try:
+            for ea, name in names_iter():
+                addr = int(ea)
+                if addr in self._ida_entity_ids_by_addr:
+                    continue
+                symbol_name = str(name or f"data_{addr:X}")
+                entity_id = f"entity:data:{addr:X}"
+                entities.append(
+                    EntityRecord(
+                        entity_id=entity_id,
+                        kind="data",
+                        name=symbol_name,
+                        artifact_id=self._active_artifact_id,
+                        canonical_ref=f"0x{addr:X}",
+                        location=self._create_location(addr, 1),
+                        attributes={"source": "idaapi"},
+                    )
+                )
+                self._ida_entity_ids_by_addr[addr] = entity_id
+        except IDA_RECOVERABLE_ERRORS as exc:
+            logger.debug("IDA data extraction failed: %s", exc)
 
     def _extract_structures_with_ida(self, entities: list[EntityRecord]) -> None:
-        """Extract structures using IDA API.
-        
-        TODO: Implement structure extraction
-        Extracts:
-        - Structure names
-        - Member names, types, and offsets
-        - Nested structures
-        - Union information
-        """
-        pass  # pragma: no cover
+        """Extract structure metadata using IDA APIs when available."""
+        if self._idautils is None or self._idc is None:
+            return
+
+        struct_count_getter = getattr(self._idc, "get_struc_qty", None)
+        if not callable(struct_count_getter):
+            return
+
+        try:
+            count = int(struct_count_getter())
+        except IDA_RECOVERABLE_ERRORS:
+            return
+
+        for idx in range(count):
+            try:
+                sid = self._idc.get_struc_id(idx)
+                name = str(self._idc.get_struc_name(sid) or f"struct_{idx}")
+                size = self._extract_int(self._idc.get_struc_size(sid), 0)
+                entities.append(
+                    EntityRecord(
+                        entity_id=f"entity:struct:{name}:{sid}",
+                        kind="structure",
+                        name=name,
+                        artifact_id=self._active_artifact_id,
+                        attributes={"size": size, "source": "idaapi"},
+                    )
+                )
+            except IDA_RECOVERABLE_ERRORS as exc:
+                logger.debug("Skipping structure index %s: %s", idx, exc)
 
     def _extract_enums_with_ida(self, entities: list[EntityRecord]) -> None:
-        """Extract enums using IDA API.
-        
-        TODO: Implement enum extraction
-        Extracts:
-        - Enum names
-        - Member names and values
-        - Bitfield information
-        """
-        pass  # pragma: no cover
+        """Extract enum metadata using IDA APIs when available."""
+        if self._idc is None:
+            return
 
-    def _extract_xrefs_with_ida(self, edges: list[EdgeRecord]) -> None:
-        """Extract cross-references using IDA API.
-        
-        TODO: Implement cross-reference extraction
-        Extracts:
-        - Code references (calls, jumps)
-        - Data references (reads, writes)
-        - Reference types (near, far, etc.)
-        """
-        pass  # pragma: no cover
+        qty_getter = getattr(self._idc, "get_enum_qty", None)
+        if not callable(qty_getter):
+            return
+
+        try:
+            count = int(qty_getter())
+        except IDA_RECOVERABLE_ERRORS:
+            return
+
+        for idx in range(count):
+            try:
+                eid = self._idc.getn_enum(idx)
+                name = str(self._idc.get_enum_name(eid) or f"enum_{idx}")
+                entities.append(
+                    EntityRecord(
+                        entity_id=f"entity:enum:{name}:{eid}",
+                        kind="enum",
+                        name=name,
+                        artifact_id=self._active_artifact_id,
+                        attributes={"source": "idaapi"},
+                    )
+                )
+            except IDA_RECOVERABLE_ERRORS as exc:
+                logger.debug("Skipping enum index %s: %s", idx, exc)
+
+    def _extract_xrefs_with_ida(self, entities: list[EntityRecord], edges: list[EdgeRecord]) -> None:
+        """Extract cross-reference edges using IDA APIs when available."""
+        if self._idautils is None:
+            return
+
+        refs_from = getattr(self._idautils, "CodeRefsFrom", None)
+        if not callable(refs_from):
+            return
+
+        for src_addr, src_entity_id in list(self._ida_entity_ids_by_addr.items()):
+            try:
+                for dst in refs_from(src_addr, 0):
+                    dst_addr = int(dst)
+                    dst_entity_id = self._ida_entity_ids_by_addr.get(dst_addr)
+                    if dst_entity_id is None:
+                        dst_entity_id = f"entity:reference:{dst_addr:X}"
+                        self._ida_entity_ids_by_addr[dst_addr] = dst_entity_id
+                        entities.append(
+                            EntityRecord(
+                                entity_id=dst_entity_id,
+                                kind="reference",
+                                name=f"loc_{dst_addr:X}",
+                                artifact_id=self._active_artifact_id,
+                                canonical_ref=f"0x{dst_addr:X}",
+                                location=self._create_location(dst_addr, 1),
+                                attributes={"source": "idaapi"},
+                            )
+                        )
+
+                    edges.append(
+                        EdgeRecord(
+                            edge_id=f"edge:xref:{src_addr:X}:{dst_addr:X}",
+                            kind="cross-reference",
+                            source_entity_id=src_entity_id,
+                            target_entity_id=dst_entity_id,
+                            attributes={"source": "idaapi"},
+                        )
+                    )
+            except IDA_RECOVERABLE_ERRORS as exc:
+                logger.debug("Skipping xrefs for %s: %s", src_addr, exc)
 
     def _extract_comments_with_ida(self, evidence: list[EvidenceRecord]) -> None:
-        """Extract comments using IDA API.
-        
-        TODO: Implement comment extraction
-        Extracts:
-        - Regular comments
-        - Repeatable comments
-        - Anterior comments (before address)
-        - Posterior comments (after address)
-        - Function comments
-        """
-        pass  # pragma: no cover
+        """Extract repeatable and non-repeatable comments from IDA APIs."""
+        if self._idautils is None or self._idc is None:
+            return
+
+        names_iter = getattr(self._idautils, "Names", None)
+        if not callable(names_iter):
+            return
+
+        for ea, _ in names_iter():
+            addr = self._extract_int(ea, -1)
+            if addr < 0:
+                continue
+            entity_id = self._ida_entity_ids_by_addr.get(addr)
+            if not entity_id:
+                continue
+
+            for repeatable, label in ((False, "regular"), (True, "repeatable")):
+                try:
+                    text = self._idc.get_cmt(addr, repeatable)
+                except IDA_RECOVERABLE_ERRORS:
+                    continue
+                if not isinstance(text, str) or not text.strip():
+                    continue
+
+                evidence.append(
+                    EvidenceRecord(
+                        evidence_id=f"evidence:comment:{addr:X}:{label}",
+                        kind="comment",
+                        artifact_id=self._active_artifact_id,
+                        entity_ids=(entity_id,),
+                        location=self._create_location(addr, 1),
+                        excerpt=text.strip(),
+                        attributes={"type": label},
+                    )
+                )
 
     def _extract_segments_with_ida(self, entities: list[EntityRecord]) -> None:
-        """Extract segments using IDA API.
-        
-        TODO: Implement segment extraction
-        Extracts:
-        - Segment names
-        - Start and end addresses
-        - Permissions (read, write, execute)
-        - Segment classes
-        """
-        pass  # pragma: no cover
+        """Extract segment metadata using IDA APIs when available."""
+        if self._idautils is None or self._idc is None:
+            return
+
+        segments_iter = getattr(self._idautils, "Segments", None)
+        if not callable(segments_iter):
+            return
+
+        for start_ea in segments_iter():
+            try:
+                start = int(start_ea)
+                end = self._extract_int(self._idc.get_segm_end(start), start)
+                size = max(0, end - start)
+                seg_name = str(self._idc.get_segm_name(start) or f"seg_{start:X}")
+                entities.append(
+                    EntityRecord(
+                        entity_id=f"entity:segment:{seg_name}:{start:X}",
+                        kind="segment",
+                        name=seg_name,
+                        artifact_id=self._active_artifact_id,
+                        location=self._create_location(start, size),
+                        attributes={"source": "idaapi"},
+                    )
+                )
+            except IDA_RECOVERABLE_ERRORS as exc:
+                logger.debug("Skipping segment at %s: %s", start_ea, exc)
+
+    def _iter_dict_items(self, data: dict[str, Any], keys: tuple[str, ...]) -> list[dict[str, Any]]:
+        """Return normalized lists of dictionary records from candidate keys."""
+        results: list[dict[str, Any]] = []
+        for key in keys:
+            value = data.get(key)
+            if isinstance(value, list):
+                for item in value:
+                    if isinstance(item, dict):
+                        results.append(item)
+            elif isinstance(value, dict):
+                for item in value.values():
+                    if isinstance(item, dict):
+                        results.append(item)
+        return results
+
+    def _extract_int(self, value: Any, default: int = 0) -> int:
+        """Extract an integer from mixed int/str JSON values."""
+        if isinstance(value, int):
+            return value
+        if isinstance(value, str):
+            text = value.strip().lower().replace("_", "")
+            if not text:
+                return default
+            try:
+                if text.startswith("0x"):
+                    return int(text, 16)
+                if text.startswith("$"):
+                    return int(text[1:], 16)
+                if any(ch in "abcdef" for ch in text):
+                    return int(text, 16)
+                return int(text, 10)
+            except ValueError:
+                return default
+        return default
+
+    def _extract_address(self, item: Any, keys: tuple[str, ...]) -> int | None:
+        """Extract an address-like integer from dict/object values."""
+        for key in keys:
+            value: Any = None
+            if isinstance(item, dict) and key in item:
+                value = item.get(key)
+            elif hasattr(item, key):
+                value = getattr(item, key)
+
+            addr = self._extract_int(value, -1)
+            if addr >= 0:
+                return addr
+        return None
+
+    def _extract_name(self, item: Any, fallback: str) -> str:
+        """Extract a display name from dict/object values."""
+        for key in ("name", "label", "symbol", "func_name"):
+            value: Any = None
+            if isinstance(item, dict):
+                value = item.get(key)
+            elif hasattr(item, key):
+                value = getattr(item, key)
+
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return fallback
+
+    def _ensure_reference_entity(
+        self,
+        address: int,
+        entities: list[EntityRecord],
+        by_addr: dict[int, str],
+    ) -> str:
+        """Ensure a generic reference entity exists for an address."""
+        existing = by_addr.get(address)
+        if existing is not None:
+            return existing
+
+        entity_id = f"entity:reference:{address:X}"
+        entities.append(
+            EntityRecord(
+                entity_id=entity_id,
+                kind="reference",
+                name=f"loc_{address:X}",
+                artifact_id=self._active_artifact_id,
+                canonical_ref=f"0x{address:X}",
+                location=self._create_location(address, 1),
+                attributes={"source": "ida"},
+            )
+        )
+        by_addr[address] = entity_id
+        return entity_id

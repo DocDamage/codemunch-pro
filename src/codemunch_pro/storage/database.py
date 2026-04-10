@@ -10,7 +10,7 @@ from pathlib import Path
 
 import sqlite_vec
 
-from codemunch_pro.parser.symbols import CallEdge, Symbol
+from codemunch_pro.parser.symbols import Symbol
 
 logger = logging.getLogger(__name__)
 
@@ -259,7 +259,10 @@ class Database:
                     sym.byte_offset, sym.byte_length,
                 ),
             )
-            symbol_id_map[sym.qualified_name] = cur.lastrowid
+            symbol_row_id = cur.lastrowid
+            if symbol_row_id is None:
+                raise RuntimeError(f'Failed to insert symbol row for {sym.qualified_name}')
+            symbol_id_map[sym.qualified_name] = int(symbol_row_id)
 
         # Insert call edges
         for sym in symbols:

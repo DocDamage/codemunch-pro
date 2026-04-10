@@ -1,12 +1,10 @@
 """Tests for SQLite storage layer — FTS5, CRUD, incremental indexing."""
 
-import tempfile
 from pathlib import Path
 
 import pytest
 
 from codemunch_pro.parser.extractor import extract_symbols
-from codemunch_pro.parser.languages import get_language_for_file
 from codemunch_pro.storage.database import Database
 
 

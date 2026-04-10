@@ -14,15 +14,13 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from codemunch_pro.rex.similarity import (
-        FunctionFingerprint,
         SimilarityIndex,
-        SimilarityResult,
     )
 
 from codemunch_pro.rex.entropy import EntropyAnalyzer
 from codemunch_pro.rex.exporters import ExportOptions, get_exporter
 from codemunch_pro.rex.memory_map import MemoryMap, MemoryRegion, RegionType
-from codemunch_pro.rex.pattern_matcher import BytePattern, PatternMatch, PatternMatcher
+from codemunch_pro.rex.pattern_matcher import BytePattern, PatternMatcher
 from codemunch_pro.rex.model import (
     AddressLocation,
     ArtifactRecord,
@@ -31,7 +29,7 @@ from codemunch_pro.rex.model import (
     EvidenceRecord,
     ReverseEngineeringBundle,
 )
-from codemunch_pro.rex.cfg import ControlFlowGraph, BasicBlock, Instruction
+from codemunch_pro.rex.cfg import ControlFlowGraph, BasicBlock
 
 DEFAULT_REX_DB_DIR = Path(".rex_db")
 DEFAULT_CONNECTION_POOL_SIZE = 5
@@ -109,6 +107,7 @@ class ConnectionPool:
         self._db_path = db_path
         self._pool_size = pool_size
         self._pool: list[sqlite3.Connection] = []
+        self._all_connections: list[sqlite3.Connection] = []
         self._lock = threading.Lock()
         self._local = threading.local()
         
@@ -128,7 +127,8 @@ class ConnectionPool:
         conn.execute("PRAGMA cache_size=10000")  # Increase cache size (pages)
         conn.execute("PRAGMA temp_store=MEMORY")  # Store temp tables in memory
         conn.execute("PRAGMA mmap_size=268435456")  # 256MB memory-mapped I/O
-        
+
+        self._all_connections.append(conn)
         return conn
     
     def get_connection(self) -> sqlite3.Connection:
@@ -159,9 +159,19 @@ class ConnectionPool:
     def close_all(self) -> None:
         """Close all connections in the pool."""
         with self._lock:
-            for conn in self._pool:
-                conn.close()
+            local_conn = getattr(self._local, "conn", None)
+            connections = list(self._all_connections)
+            if local_conn is not None and local_conn not in connections:
+                connections.append(local_conn)
+
+            for conn in connections:
+                try:
+                    conn.close()
+                except sqlite3.Error:
+                    continue
             self._pool.clear()
+            self._all_connections.clear()
+            self._local.conn = None
 
 
 class StatementCache:
@@ -423,6 +433,7 @@ class ReverseEngineeringStore:
             ],
         )
         self._conn.commit()
+        self.clear_caches()
     
     def bulk_insert_entities(self, entities: list[EntityRecord]) -> None:
         """Bulk insert entities for better performance."""
@@ -460,6 +471,7 @@ class ReverseEngineeringStore:
             ],
         )
         self._conn.commit()
+        self.clear_caches()
     
     def bulk_insert_evidence(self, evidence_list: list[EvidenceRecord]) -> None:
         """Bulk insert evidence for better performance."""
@@ -495,6 +507,7 @@ class ReverseEngineeringStore:
             ],
         )
         self._conn.commit()
+        self.clear_caches()
     
     def bulk_insert_edges(self, edges: list[EdgeRecord]) -> None:
         """Bulk insert edges for better performance."""
@@ -528,6 +541,7 @@ class ReverseEngineeringStore:
             ],
         )
         self._conn.commit()
+        self.clear_caches()
     
     def upsert_bundle(self, bundle: ReverseEngineeringBundle) -> None:
         """Upsert a bundle into the store using bulk operations."""
@@ -814,7 +828,7 @@ class ReverseEngineeringStore:
         if address_space:
             # Filter by address_space in the location_json
             sql += " AND location_json LIKE ?"
-            params.append(f'"address_space": "{address_space}"%')
+            params.append(f'%"address_space": "{address_space}"%')
         
         sql += " ORDER BY entity_id LIMIT ?"
         params.append(limit)
@@ -856,7 +870,7 @@ class ReverseEngineeringStore:
         if not entity_ids:
             return []
         
-        cursor = self._conn.cursor()
+        self._conn.cursor()
         evidence_list = []
         
         for entity_id in entity_ids[:limit]:
@@ -1132,7 +1146,7 @@ class ReverseEngineeringStore:
             shared_signatures = list(shared)
         
         # Find unique signatures (present in only one artifact)
-        all_sigs_list: list[set[str]] = list(artifact_signatures.values())
+        list(artifact_signatures.values())
         for artifact_id, sigs in artifact_signatures.items():
             # A signature is unique if it's not in any other artifact
             other_sigs = set()
@@ -1208,7 +1222,7 @@ class ReverseEngineeringStore:
         
         if address_space:
             sql += " AND location_json LIKE ?"
-            params.append(f'"address_space": "{address_space}"%')
+            params.append(f'%"address_space": "{address_space}"%')
         
         sql += """
             GROUP BY canonical_ref
@@ -1231,31 +1245,73 @@ class ReverseEngineeringStore:
             
             # Get unique artifact IDs
             artifact_ids = list(set(e.artifact_id for e in entities))[:limit_artifacts]
+            artifact_id_set = set(artifact_ids)
+            anchor_entities = entities[:limit_anchors]
+            anchor_entity_ids = [entity.entity_id for entity in anchor_entities]
+            anchor_entity_id_set = set(anchor_entity_ids)
             
-            # Get unique anchor kinds across all related entities (including connected ones)
+            # Batch-load neighbors for all anchors to avoid per-anchor query loops.
+            anchor_edges: dict[str, list[EdgeRecord]] = {entity_id: [] for entity_id in anchor_entity_ids}
+            if anchor_entity_ids:
+                placeholders = ",".join(["?"] * len(anchor_entity_ids))
+                cursor.execute(
+                    f"""
+                    SELECT * FROM edges
+                    WHERE source_entity_id IN ({placeholders}) OR target_entity_id IN ({placeholders})
+                    ORDER BY edge_id
+                    """,
+                    tuple(anchor_entity_ids) + tuple(anchor_entity_ids),
+                )
+                edge_rows = cursor.fetchall()
+                for edge_row in edge_rows:
+                    edge = self._row_to_edge(edge_row)
+                    if edge.source_entity_id in anchor_entity_id_set:
+                        anchor_edges[edge.source_entity_id].append(edge)
+                    if edge.target_entity_id in anchor_entity_id_set and edge.target_entity_id != edge.source_entity_id:
+                        anchor_edges[edge.target_entity_id].append(edge)
+
+            # Batch-load related entities referenced by those neighbor edges.
+            related_entity_ids: set[str] = set()
+            for anchor_id in anchor_entity_ids:
+                for edge in anchor_edges.get(anchor_id, [])[:limit_anchors]:
+                    if edge.source_entity_id == anchor_id:
+                        related_entity_ids.add(edge.target_entity_id)
+                    else:
+                        related_entity_ids.add(edge.source_entity_id)
+
+            entity_by_id = {entity.entity_id: entity for entity in anchor_entities}
+            if related_entity_ids:
+                placeholders = ",".join(["?"] * len(related_entity_ids))
+                cursor.execute(
+                    f"SELECT * FROM entities WHERE entity_id IN ({placeholders})",
+                    tuple(related_entity_ids),
+                )
+                for entity_row in cursor.fetchall():
+                    loaded_entity = self._row_to_entity(entity_row)
+                    entity_by_id[loaded_entity.entity_id] = loaded_entity
+
+            # Get unique anchor kinds across all related entities (including connected ones).
             all_related_kinds: set[str] = set()
             all_anchor_entities: set[str] = set()
-            for entity in entities[:limit_anchors]:
+            section_count = 0
+            for entity in anchor_entities:
                 all_related_kinds.add(entity.kind)
                 all_anchor_entities.add(entity.entity_id)
-                # Add connected entity kinds
-                edges = self.get_neighbors(entity.entity_id, limit=limit_anchors)
-                for edge in edges:
-                    for eid in [edge.source_entity_id, edge.target_entity_id]:
-                        e = self.get_entity(eid)
-                        if e and e.artifact_id in artifact_ids:
-                            all_related_kinds.add(e.kind)
-                            all_anchor_entities.add(e.entity_id)
-            
+                # Add connected entity kinds with preloaded edge/entity data.
+                for edge in anchor_edges.get(entity.entity_id, [])[:limit_anchors]:
+                    if edge.source_entity_id == entity.entity_id:
+                        other_id = edge.target_entity_id
+                    else:
+                        other_id = edge.source_entity_id
+                    other = entity_by_id.get(other_id)
+                    if other and other.artifact_id in artifact_id_set:
+                        all_related_kinds.add(other.kind)
+                        all_anchor_entities.add(other.entity_id)
+                        if other.kind == "section":
+                            section_count += 1
+
             anchor_kinds = list(all_related_kinds)[:limit_anchors]
-            
-            # Count actual section connections (not just unique kinds)
-            # This differentiates refs appearing in more section contexts
-            section_count = sum(1 for e in entities[:limit_anchors] 
-                               for edge in self.get_neighbors(e.entity_id, limit=limit_anchors)
-                               if (other := self.get_entity(edge.target_entity_id if edge.source_entity_id == e.entity_id else edge.source_entity_id))
-                               and other.kind == 'section')
-            
+
             # Calculate ranking score with higher weight for anchor diversity and section contexts
             ranking_score = artifact_count * 10 + len(anchor_kinds) * 5 + section_count * 2
             
@@ -1647,8 +1703,6 @@ class ReverseEngineeringStore:
             Dictionary with similarity search results
         """
         from codemunch_pro.rex.similarity import (
-            SimilarityAlgorithm,
-            SimilarityIndex,
             create_fingerprint_from_entity,
         )
 
@@ -3166,18 +3220,25 @@ class ReverseEngineeringStore:
         
         checker = IntegrityChecker(self)
         report = checker.check_all()
+        auto_fixable = report.get_auto_fixable()
         
         if auto_fix:
-            fixed = checker.fix_issues(report)
+            fixed = checker.fix_issues(auto_fixable)
             return {
-                "fixed": fixed,
+                "auto_fix": True,
+                "fixed_count": fixed["fixed_count"],
+                "failed_count": fixed["failed_count"],
+                "fixed": fixed["fixed"],
+                "failed": fixed["failed"],
+                "issues": [issue.to_dict() for issue in auto_fixable],
                 "report": report.to_dict(),
-                "message": f"Fixed {len(fixed)} issues",
+                "message": f"Fixed {fixed['fixed_count']} issues",
             }
         
-        auto_fixable = report.get_auto_fixable()
         return {
-            "auto_fixable_count": len(auto_fixable),
+            "auto_fix": False,
+            "would_fix_count": len(auto_fixable),
+            "issues": [issue.to_dict() for issue in auto_fixable],
             "report": report.to_dict(),
             "message": f"Found {len(auto_fixable)} auto-fixable issues. Set auto_fix=True to fix.",
         }

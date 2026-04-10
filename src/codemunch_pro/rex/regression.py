@@ -7,14 +7,13 @@ significant changes in the reverse-engineering data.
 
 from __future__ import annotations
 
-import json
-import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from codemunch_pro.rex.model import EntityRecord, EvidenceRecord, EdgeRecord
+if TYPE_CHECKING:
+    from codemunch_pro.rex.storage import ReverseEngineeringStore
+
 
 
 @dataclass
@@ -193,7 +192,7 @@ class RegressionTester:
     
     def __init__(
         self,
-        store: "ReverseEngineeringStore",
+        store: ReverseEngineeringStore,
         thresholds: dict[str, float] | None = None,
     ):
         """Initialize the regression tester.
@@ -624,7 +623,7 @@ class RegressionTester:
         # Get current entity IDs from store
         cursor = self._store._conn.cursor()
         cursor.execute("SELECT entity_id, kind, name, canonical_ref FROM entities")
-        current_entities = {row[0]: row for row in cursor.fetchall()}
+        {row[0]: row for row in cursor.fetchall()}
         
         # Note: For full entity comparison, we'd need to store entity IDs in snapshot
         # For now, return empty lists - can be enhanced with full entity tracking

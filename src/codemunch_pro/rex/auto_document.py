@@ -6,8 +6,6 @@ based on their context within the reverse-engineering database.
 
 from __future__ import annotations
 
-import json
-import re
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any
@@ -58,19 +56,19 @@ class DocumentationTemplate:
         """Convert documentation to Markdown format."""
         lines = [
             f"## {self.function_name}",
-            f"",
+            "",
             f"**Address:** `0x{self.function_address:04X}`",
-            f"",
+            "",
         ]
 
         if self.purpose:
-            lines.extend([f"### Purpose", f"", f"{self.purpose}", f""])
+            lines.extend(["### Purpose", "", f"{self.purpose}", ""])
 
         if self.description:
-            lines.extend([f"### Description", f"", f"{self.description}", f""])
+            lines.extend(["### Description", "", f"{self.description}", ""])
 
         if self.parameters:
-            lines.extend([f"### Parameters", f""])
+            lines.extend(["### Parameters", ""])
             for param in self.parameters:
                 name = param.get("name", "unknown")
                 ptype = param.get("type", "unknown")
@@ -79,7 +77,7 @@ class DocumentationTemplate:
             lines.append("")
 
         if self.return_values:
-            lines.extend([f"### Return Values", f""])
+            lines.extend(["### Return Values", ""])
             for ret in self.return_values:
                 rtype = ret.get("type", "unknown")
                 desc = ret.get("description", "")
@@ -87,13 +85,13 @@ class DocumentationTemplate:
             lines.append("")
 
         if self.side_effects:
-            lines.extend([f"### Side Effects", f""])
+            lines.extend(["### Side Effects", ""])
             for effect in self.side_effects:
                 lines.append(f"- {effect}")
             lines.append("")
 
         if self.related_functions:
-            lines.extend([f"### Related Functions", f""])
+            lines.extend(["### Related Functions", ""])
             for func in self.related_functions:
                 name = func.get("name", "unknown")
                 addr = func.get("address", 0)
@@ -102,7 +100,7 @@ class DocumentationTemplate:
             lines.append("")
 
         if self.notes:
-            lines.extend([f"### Notes", f""])
+            lines.extend(["### Notes", ""])
             for note in self.notes:
                 lines.append(f"- {note}")
             lines.append("")
@@ -117,17 +115,17 @@ class DocumentationTemplate:
         lines = [
             f"Function: {self.function_name}",
             f"Address: 0x{self.function_address:04X}",
-            f"",
+            "",
         ]
 
         if self.purpose:
-            lines.extend([f"PURPOSE:", f"  {self.purpose}", f""])
+            lines.extend(["PURPOSE:", f"  {self.purpose}", ""])
 
         if self.description:
-            lines.extend([f"DESCRIPTION:", f"  {self.description}", f""])
+            lines.extend(["DESCRIPTION:", f"  {self.description}", ""])
 
         if self.parameters:
-            lines.extend([f"PARAMETERS:"])
+            lines.extend(["PARAMETERS:"])
             for param in self.parameters:
                 name = param.get("name", "unknown")
                 ptype = param.get("type", "unknown")
@@ -136,7 +134,7 @@ class DocumentationTemplate:
             lines.append("")
 
         if self.return_values:
-            lines.extend([f"RETURN VALUES:"])
+            lines.extend(["RETURN VALUES:"])
             for ret in self.return_values:
                 rtype = ret.get("type", "unknown")
                 desc = ret.get("description", "")
@@ -144,13 +142,13 @@ class DocumentationTemplate:
             lines.append("")
 
         if self.side_effects:
-            lines.extend([f"SIDE EFFECTS:"])
+            lines.extend(["SIDE EFFECTS:"])
             for effect in self.side_effects:
                 lines.append(f"  - {effect}")
             lines.append("")
 
         if self.related_functions:
-            lines.extend([f"RELATED FUNCTIONS:"])
+            lines.extend(["RELATED FUNCTIONS:"])
             for func in self.related_functions:
                 name = func.get("name", "unknown")
                 addr = func.get("address", 0)
@@ -159,7 +157,7 @@ class DocumentationTemplate:
             lines.append("")
 
         if self.notes:
-            lines.extend([f"NOTES:"])
+            lines.extend(["NOTES:"])
             for note in self.notes:
                 lines.append(f"  - {note}")
             lines.append("")

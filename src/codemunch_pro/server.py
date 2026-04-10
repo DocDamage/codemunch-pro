@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import sqlite3
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +18,7 @@ from mcp.server.fastmcp import FastMCP
 
 from codemunch_pro.embedder.embed import Embedder
 from codemunch_pro.parser.extractor import extract_symbols
-from codemunch_pro.parser.languages import get_language_for_file, LANGUAGES
+from codemunch_pro.parser.languages import get_language_for_file
 from codemunch_pro.rex import (
     AdapterRegistry,
     BytePattern,
@@ -25,7 +26,6 @@ from codemunch_pro.rex import (
     FlatAddressCodec,
     GenericDocumentImporter,
     GitError,
-    PatternMatcher,
     REProjectRepo,
     ReverseEngineeringStore,
     SegmentedHexAddressCodec,
@@ -873,7 +873,7 @@ def _index_directory(
             content = file_path.read_text(errors='replace')
             size = file_path.stat().st_size
 
-            file_id = db.upsert_file(
+            db.upsert_file(
                 path=rel_path,
                 sha256=file_hash,
                 language=language,
@@ -1032,7 +1032,7 @@ def _extract_strings(
         return {"error": f"Binary file not found: {binary_path}"}
     
     try:
-        data = binary_file.read_bytes()
+        binary_file.read_bytes()
     except (IOError, OSError) as e:
         return {"error": f"Failed to read binary file: {e}"}
     
@@ -1156,7 +1156,17 @@ def create_server(
         })
 
     mcp = FastMCP(**kwargs)
+    _register_server_tools(mcp)
+    return mcp
 
+
+def _register_server_tools(mcp: FastMCP) -> None:
+    _register_code_index_tools(mcp)
+    _register_rex_analysis_tools(mcp)
+    _register_runtime_tools(mcp)
+
+
+def _register_code_index_tools(mcp: FastMCP) -> None:
     # --- Tool 1: index_folder ---
     @mcp.tool()
     def index_folder(
@@ -1259,17 +1269,16 @@ def create_server(
             for db_file in DEFAULT_DB_DIR.glob('*.db'):
                 # Open and check if not already loaded
                 try:
-                    conn = __import__('sqlite3').connect(str(db_file))
-                    conn.row_factory = __import__('sqlite3').Row
-                    row = conn.execute(
-                        "SELECT value FROM meta WHERE key = 'repo_path'"
-                    ).fetchone()
-                    if row and row['value'] not in _databases:
-                        db = _get_db(row['value'])
-                        repos.append(db.get_stats())
-                    conn.close()
-                except Exception:
-                    pass
+                    with sqlite3.connect(str(db_file)) as conn:
+                        conn.row_factory = sqlite3.Row
+                        row = conn.execute(
+                            "SELECT value FROM meta WHERE key = 'repo_path'"
+                        ).fetchone()
+                        if row and row["value"] not in _databases:
+                            db = _get_db(row["value"])
+                            repos.append(db.get_stats())
+                except (sqlite3.Error, OSError, ValueError) as exc:
+                    logger.debug("Skipping DB file %s during repo scan: %s", db_file, exc)
 
         return {'repos': repos, 'count': len(repos)}
 
@@ -1699,8 +1708,8 @@ def create_server(
                             'line': sym.line,
                             'signature': sym.signature,
                         }
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Failed to extract symbols for %s during diff: %s", rel_path, exc)
             else:
                 # Unchanged — carry forward old symbols for this file
                 for qn, data in old_symbols.items():
@@ -1819,6 +1828,9 @@ def create_server(
             'depended_by_files': len(depended_by),
         }
 
+
+
+def _register_rex_analysis_tools(mcp: FastMCP) -> None:
     # --- Tool 16: index_artifact ---
     @mcp.tool()
     def index_artifact(
@@ -2787,6 +2799,9 @@ def create_server(
             address_space=address_space,
         )
 
+
+
+def _register_runtime_tools(mcp: FastMCP) -> None:
     # --- Debugger Tools ---
 
     @mcp.tool()
@@ -4135,9 +4150,6 @@ def create_server(
             "count": len(operations),
         }
 
-    return mcp
-
-
 def _dot_id(s: str) -> str:
     """Convert a string to a valid DOT identifier."""
     import re
@@ -4490,18 +4502,6 @@ def _get_graph_statistics(project_path: str) -> dict[str, Any]:
             'total_rex_edges': rex_stats.get('edges', 0),
         },
     }
-
-
-def _dot_id(s: str) -> str:
-    """Convert a string to a valid DOT identifier."""
-    import re
-    # Replace invalid characters with underscores
-    safe = re.sub(r'[^a-zA-Z0-9_]', '_', s)
-    # Ensure it starts with a letter
-    if safe and safe[0].isdigit():
-        safe = 'n' + safe
-    return safe or 'node'
-
 
 def _export_rex_data_flow(
     store: Any, entity_id: str, symbol_name: str

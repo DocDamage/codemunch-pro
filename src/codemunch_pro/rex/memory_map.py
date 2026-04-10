@@ -210,16 +210,16 @@ class MemoryMap:
         # Build SVG
         lines: list[str] = [
             f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
-            f'  <defs>',
-            f'    <style>',
-            f'      .region {{ stroke: #333; stroke-width: 1; }}',
-            f'      .address-label {{ font-family: monospace; font-size: 11px; fill: #666; }}',
-            f'      .region-label {{ font-family: sans-serif; font-size: 12px; fill: #fff; font-weight: bold; }}',
-            f'      .title {{ font-family: sans-serif; font-size: 16px; fill: #333; font-weight: bold; }}',
-            f'      .overlap {{ fill: none; stroke: #ff0000; stroke-width: 3; stroke-dasharray: 5,5; }}',
-            f'    </style>',
-            f'  </defs>',
-            f'  <rect width="100%" height="100%" fill="#f8f9fa"/>',
+            '  <defs>',
+            '    <style>',
+            '      .region { stroke: #333; stroke-width: 1; }',
+            '      .address-label { font-family: monospace; font-size: 11px; fill: #666; }',
+            '      .region-label { font-family: sans-serif; font-size: 12px; fill: #fff; font-weight: bold; }',
+            '      .title { font-family: sans-serif; font-size: 16px; fill: #333; font-weight: bold; }',
+            '      .overlap { fill: none; stroke: #ff0000; stroke-width: 3; stroke-dasharray: 5,5; }',
+            '    </style>',
+            '  </defs>',
+            '  <rect width="100%" height="100%" fill="#f8f9fa"/>',
             f'  <text x="{width//2}" y="25" text-anchor="middle" class="title">{html.escape(self.name)}</text>',
         ]
         

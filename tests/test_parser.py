@@ -1,13 +1,10 @@
 """Tests for parser module — symbol extraction from source files."""
 
-import tempfile
-from pathlib import Path
 
 import pytest
 
 from codemunch_pro.parser.extractor import extract_symbols
 from codemunch_pro.parser.languages import get_language_for_file, LANGUAGES
-from codemunch_pro.parser.symbols import Symbol, CallEdge
 
 
 # --- Language detection ---
@@ -197,7 +194,7 @@ class TestJavaScriptExtraction:
         assert 'Calculator' in names
 
     def test_extracts_arrow_function(self, symbols):
-        names = [s.name for s in symbols]
+        [s.name for s in symbols]
         # Arrow functions inside const may or may not be extracted as named symbols
         # depending on the grammar — at minimum we get the function and class
         assert len(symbols) >= 2
@@ -236,7 +233,7 @@ class TestGoExtraction:
         assert 'Hello' in names
 
     def test_extracts_struct(self, symbols):
-        kinds = {s.name: s.kind for s in symbols}
+        {s.name: s.kind for s in symbols}
         # Greeter should be found (either as class/struct from type_declaration or struct_specifier)
         assert any('Greeter' in s.name for s in symbols) or len(symbols) >= 2
 

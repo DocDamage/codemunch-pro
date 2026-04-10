@@ -1,6 +1,5 @@
 """Integration tests for the MCP server — full indexing + all 13 tools."""
 
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -144,7 +143,7 @@ class TestIndexDirectory:
         assert stats2['deleted'] >= 1
 
     def test_respects_exclude(self, repo_dir):
-        stats = _index_directory(
+        _index_directory(
             str(repo_dir),
             exclude_patterns=['*.js'],
             embed=False,
@@ -171,14 +170,10 @@ class TestServerTools:
         """Call an MCP tool by name, bypassing the MCP protocol."""
         # Access the tool functions registered on the server
         # Since we're testing directly, call the inner functions
-        from codemunch_pro.server import (
-            _get_db, _index_directory, _walk_source_files,
-        )
 
         # Map tool names to their implementations
         # The tools are registered as closures, so we re-import server module
-        import codemunch_pro.server as srv
-        mcp = create_server()
+        create_server()
 
         # Tools are registered as closures. We test via direct function call.
         # This is a pragmatic approach since MCP tools are thin wrappers.
@@ -290,15 +285,13 @@ class TestDiffSymbols:
 
     def test_no_changes_empty_diff(self, repo_dir):
         """When nothing changed, diff should be empty."""
-        from codemunch_pro.server import create_server
         _index_directory(str(repo_dir), embed=False)
 
         # Import diff function directly
         from codemunch_pro.server import _get_db, _walk_source_files, _sha256_file
-        from codemunch_pro.parser.extractor import extract_symbols
 
         db = _get_db(str(repo_dir))
-        old_symbols = {s['qualified_name']: s for s in db.get_all_symbols(limit=10000)}
+        {s['qualified_name']: s for s in db.get_all_symbols(limit=10000)}
 
         # No changes — all files should match
         source_files = _walk_source_files(Path(repo_dir))
@@ -320,10 +313,10 @@ class TestDiffSymbols:
         main_py.write_text(PYTHON_SOURCE + '\ndef new_feature(): pass\n')
 
         # Now create server and call diff
-        mcp = create_server()
+        create_server()
         # Access diff through direct function testing
         db = _get_db(str(repo_dir))
-        old_syms = {s['qualified_name'] for s in db.get_all_symbols(limit=10000)}
+        {s['qualified_name'] for s in db.get_all_symbols(limit=10000)}
 
         # Re-extract the changed file
         from codemunch_pro.parser.extractor import extract_symbols
@@ -381,7 +374,7 @@ class TestDependencyMap:
 
 class TestMultiLanguage:
     def test_indexes_python_and_javascript(self, repo_dir):
-        stats = _index_directory(str(repo_dir), embed=False)
+        _index_directory(str(repo_dir), embed=False)
         db = _get_db(str(repo_dir))
         langs = db.get_stats()['languages']
         assert 'python' in langs
@@ -790,10 +783,6 @@ class TestGraphVisualizationTools:
 
     def test_export_call_graph_dot_generates_valid_dot(self, repo_dir):
         """export_call_graph_dot should generate valid DOT format."""
-        from codemunch_pro.server import (
-            _export_call_graph_dot,
-            _dot_id,
-        )
         _index_directory(str(repo_dir), embed=False)
 
         result = _export_call_graph_dot(
@@ -817,7 +806,6 @@ class TestGraphVisualizationTools:
 
     def test_export_call_graph_dot_returns_error_for_missing_symbol(self, repo_dir):
         """export_call_graph_dot should return error for non-existent symbol."""
-        from codemunch_pro.server import _export_call_graph_dot
         _index_directory(str(repo_dir), embed=False)
 
         result = _export_call_graph_dot(
@@ -831,7 +819,6 @@ class TestGraphVisualizationTools:
 
     def test_export_reference_graph_dot_error_handling(self, repo_dir):
         """export_reference_graph_dot should handle missing entities gracefully."""
-        from codemunch_pro.server import _export_reference_graph_dot
         _index_directory(str(repo_dir), embed=False)
 
         # When no entities are found, should return an error
@@ -847,7 +834,6 @@ class TestGraphVisualizationTools:
 
     def test_export_reference_graph_dot_returns_error_for_missing_address(self, repo_dir):
         """export_reference_graph_dot should return error for non-existent address."""
-        from codemunch_pro.server import _export_reference_graph_dot
         _index_directory(str(repo_dir), embed=False)
 
         result = _export_reference_graph_dot(
@@ -861,7 +847,6 @@ class TestGraphVisualizationTools:
 
     def test_export_data_flow_dot_generates_valid_dot(self, repo_dir):
         """export_data_flow_dot should generate valid DOT format."""
-        from codemunch_pro.server import _export_data_flow_dot
         _index_directory(str(repo_dir), embed=False)
 
         result = _export_data_flow_dot(
@@ -881,7 +866,6 @@ class TestGraphVisualizationTools:
 
     def test_export_data_flow_dot_returns_error_for_missing_symbol(self, repo_dir):
         """export_data_flow_dot should return error for non-existent symbol."""
-        from codemunch_pro.server import _export_data_flow_dot
         _index_directory(str(repo_dir), embed=False)
 
         result = _export_data_flow_dot(
@@ -893,7 +877,6 @@ class TestGraphVisualizationTools:
 
     def test_get_graph_statistics_returns_stats(self, repo_dir):
         """get_graph_statistics should return graph metrics."""
-        from codemunch_pro.server import _get_graph_statistics
         _index_directory(str(repo_dir), embed=False)
 
         result = _get_graph_statistics(
@@ -916,7 +899,6 @@ class TestGraphVisualizationTools:
 
     def test_dot_id_escapes_special_characters(self):
         """_dot_id should convert strings to valid DOT identifiers."""
-        from codemunch_pro.server import _dot_id
 
         assert _dot_id('hello') == 'hello'
         assert _dot_id('hello.world') == 'hello_world'
@@ -927,7 +909,6 @@ class TestGraphVisualizationTools:
 
     def test_export_call_graph_dot_includes_color_coding(self, repo_dir):
         """export_call_graph_dot should color nodes by symbol kind."""
-        from codemunch_pro.server import _export_call_graph_dot
         _index_directory(str(repo_dir), embed=False)
 
         result = _export_call_graph_dot(

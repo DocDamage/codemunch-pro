@@ -11,7 +11,7 @@ def main() -> int:
         description='Intelligent code indexing MCP server',
     )
     parser.add_argument(
-        '--version', action='version', version=f'%(prog)s 1.2.0',
+        '--version', action='version', version='%(prog)s 1.2.0',
     )
     
     subparsers = parser.add_subparsers(dest='command', help='Available commands')
@@ -58,7 +58,6 @@ def main() -> int:
     
     # Init command (project templates)
     from codemunch_pro.rex.project_templates import (
-        AVAILABLE_TEMPLATES,
         add_init_subparser,
         add_list_subparser,
     )

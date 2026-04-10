@@ -20,7 +20,6 @@ from codemunch_pro.rex.model import (
     ArtifactRecord,
     EdgeRecord,
     EntityRecord,
-    EvidenceRecord,
     ReverseEngineeringBundle,
 )
 from codemunch_pro.rex.storage import ReverseEngineeringStore

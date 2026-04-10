@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from codemunch_pro.rex.model import (
     AddressLocation,
@@ -62,7 +62,7 @@ class GenericDocumentImporter:
         # Extract sections (markdown headers)
         section_pattern = re.compile(r"^(#{1,6})\s+(.+)$", re.MULTILINE)
         for match in section_pattern.finditer(content):
-            level = len(match.group(1))
+            len(match.group(1))
             title = match.group(2).strip()
             section_entity = EntityRecord(
                 entity_id=f"entity:section:{path.as_posix()}:{title}",
@@ -97,7 +97,6 @@ class GenericDocumentImporter:
         refs = self._extract_refs(content)
         
         # Build a map of line numbers to sections for reference->section linking
-        line_to_section: dict[int, EntityRecord] = {}
         for i, line in enumerate(lines):
             for entity in entities:
                 if entity.kind == "section":
