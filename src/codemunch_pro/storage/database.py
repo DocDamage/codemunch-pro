@@ -111,6 +111,11 @@ CREATE VIRTUAL TABLE IF NOT EXISTS symbols_vec USING vec0(
 """
 
 
+def _normalize_rel_path(path: str) -> str:
+    """Normalize repository-relative paths to POSIX separators."""
+    return path.replace("\\", "/")
+
+
 class Database:
     """Per-repo SQLite database with FTS5 and vector search."""
 
@@ -182,6 +187,7 @@ class Database:
 
     def get_file_hash(self, path: str) -> str | None:
         """Get the stored SHA-256 hash for a file path."""
+        path = _normalize_rel_path(path)
         row = self.conn.execute(
             'SELECT sha256 FROM files WHERE path = ?', (path,)
         ).fetchone()
@@ -200,6 +206,7 @@ class Database:
 
         Returns the file ID.
         """
+        path = _normalize_rel_path(path)
         cur = self.conn.cursor()
 
         # Check if file exists
@@ -278,6 +285,7 @@ class Database:
 
     def delete_file(self, path: str) -> None:
         """Delete a file and all its symbols."""
+        path = _normalize_rel_path(path)
         cur = self.conn.cursor()
         file_row = cur.execute(
             'SELECT id FROM files WHERE path = ?', (path,)
@@ -330,6 +338,7 @@ class Database:
 
     def get_file_symbols(self, file_path: str) -> list[dict]:
         """Get all symbols in a file, ordered by line number."""
+        file_path = _normalize_rel_path(file_path)
         rows = self.conn.execute(
             'SELECT s.*, f.path as file_path FROM symbols s '
             'JOIN files f ON s.file_id = f.id '

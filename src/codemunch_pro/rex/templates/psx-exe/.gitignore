@@ -1,0 +1,48 @@
+# CodeMunch Pro - Reverse Engineering Project GitIgnore
+
+# PlayStation files (copyrighted content)
+*.exe
+*.psx
+*.ps1
+*.bin
+*.iso
+*.cue
+*.img
+
+# BIOS files
+*.rom
+scph*.bin
+
+# CodeMunch Pro database
+.rex_db/
+*.db
+*.db-journal
+
+# Export artifacts (can be regenerated)
+exports/*.json
+exports/*.csv
+exports/*.xml
+exports/*.txt
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE files
+.vscode/
+.idea/
+*.code-workspace
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/

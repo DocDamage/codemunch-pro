@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% block title %}{% if query %}Search: {{ query }}{% else %}Search{% endif %} - CodeMunch Pro REX{% endblock %}
+
+{% block content %}
+<div class="search-page">
+    <header class="page-header">
+        <h1><i class="fas fa-search"></i> Search</h1>
+    </header>
+
+    <div class="search-box-large">
+        <form action="/search" method="get">
+            <div class="search-input-group">
+                <i class="fas fa-search"></i>
+                <input type="text" name="q" value="{{ query }}" placeholder="Search for entities, functions, data..." autofocus>
+                <select name="kind" class="kind-select">
+                    <option value="" {% if not kind %}selected{% endif %}>All Types</option>
+                    <option value="function" {% if kind == 'function' %}selected{% endif %}>Function</option>
+                    <option value="data" {% if kind == 'data' %}selected{% endif %}>Data</option>
+                    <option value="string" {% if kind == 'string' %}selected{% endif %}>String</option>
+                    <option value="label" {% if kind == 'label' %}selected{% endif %}>Label</option>
+                    <option value="section" {% if kind == 'section' %}selected{% endif %}>Section</option>
+                </select>
+                <button type="submit" class="btn btn-primary">Search</button>
+            </div>
+        </form>
+    </div>
+
+    {% if has_query %}
+    <div class="search-results">
+        <div class="results-header">
+            <h2>Results for "{{ query }}"</h2>
+            <span class="results-count">{{ entity_count }} entities, {{ evidence_count }} evidence</span>
+        </div>
+
+        {% if entities %}
+        <div class="results-section">
+            <h3><i class="fas fa-cube"></i> Entities</h3>
+            <div class="entity-cards">
+                {% for entity in entities %}
+                <div class="entity-card">
+                    <div class="entity-card-header">
+                        <span class="badge kind-{{ entity.kind }}">{{ entity.kind }}</span>
+                        {% if entity.location %}
+                        <code class="entity-address">{{ entity.location.display or "0x%04X"|format(entity.location.start) }}</code>
+                        {% endif %}
+                    </div>
+                    <h4 class="entity-name">
+                        <a href="/entity/{{ entity.entity_id }}">{{ entity.name or entity.entity_id }}</a>
+                    </h4>
+                    {% if entity.summary %}
+                    <p class="entity-summary">{{ entity.summary }}</p>
+                    {% endif %}
+                    {% if entity.canonical_ref %}
+                    <div class="entity-ref">
+                        <i class="fas fa-link"></i> {{ entity.canonical_ref }}
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% if evidence %}
+        <div class="results-section">
+            <h3><i class="fas fa-file-alt"></i> Evidence</h3>
+            <div class="evidence-list">
+                {% for ev in evidence %}
+                <div class="evidence-item">
+                    <div class="evidence-header">
+                        <span class="badge kind-{{ ev.kind }}">{{ ev.kind }}</span>
+                        <a href="/evidence/{{ ev.evidence_id }}" class="evidence-id">{{ ev.evidence_id }}</a>
+                    </div>
+                    {% if ev.excerpt %}
+                    <pre class="evidence-excerpt"><code>{{ ev.excerpt[:500] }}{% if ev.excerpt|length > 500 %}...{% endif %}</code></pre>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% if not entities and not evidence %}
+        <div class="empty-state large">
+            <i class="fas fa-search"></i>
+            <p>No results found for "{{ query }}"</p>
+        </div>
+        {% endif %}
+    </div>
+    {% else %}
+    <div class="search-tips">
+        <h3><i class="fas fa-lightbulb"></i> Search Tips</h3>
+        <ul>
+            <li>Search by entity name, address (e.g., <code>0xC123</code>), or ID</li>
+            <li>Use the type filter to narrow results</li>
+            <li>Search is case-insensitive</li>
+            <li>Partial matches are supported</li>
+        </ul>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

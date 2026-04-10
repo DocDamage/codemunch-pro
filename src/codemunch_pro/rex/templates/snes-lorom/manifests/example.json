@@ -1,0 +1,19 @@
+{
+  "version": "1.0",
+  "platform": "snes-lorom",
+  "entries": [
+    {
+      "type": "function",
+      "address": "0x008000",
+      "name": "ResetHandler",
+      "description": "System reset entry point"
+    },
+    {
+      "type": "data",
+      "address": "0x007FC0",
+      "name": "InternalHeader",
+      "size": 32,
+      "description": "SNES cartridge header"
+    }
+  ]
+}

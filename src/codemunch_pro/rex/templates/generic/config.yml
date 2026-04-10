@@ -1,0 +1,43 @@
+# Generic Binary Project Configuration
+# CodeMunch Pro Reverse Engineering Template
+
+project:
+  name: "{{PROJECT_NAME}}"
+  platform: generic
+  created: "{{CREATED_DATE}}"
+  version: "1.0.0"
+
+platform:
+  type: generic
+  description: "Generic binary analysis project"
+  base_address: 0x0
+  
+cpu:
+  type: unknown
+  architecture: "unknown"
+  address_bus: 32-bit
+  data_bus: 8-bit
+  
+memory_map:
+  - name: "Binary"
+    range: "0x00000000-0xFFFFFFFF"
+    type: unknown
+    
+directories:
+  manifests: "./manifests"
+  notes: "./notes"
+  symbols: "./symbols"
+  exports: "./exports"
+  
+defaults:
+  manifest_format: "json"
+  symbol_format: "json"
+  export_format: "json"
+  
+tools:
+  - name: "Ghidra"
+    description: "Reverse engineering framework"
+  - name: "Binary Ninja"
+    description: "Binary analysis platform"
+  - name: "IDA Pro"
+    description: "Interactive disassembler"

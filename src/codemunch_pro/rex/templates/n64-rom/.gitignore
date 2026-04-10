@@ -1,0 +1,53 @@
+# CodeMunch Pro - Reverse Engineering Project GitIgnore
+
+# N64 ROM files (copyrighted content)
+*.z64
+*.n64
+*.v64
+*.rom
+*.bin
+
+# Large binary files
+*.exe
+*.dll
+*.so
+*.dylib
+
+# CodeMunch Pro database
+.rex_db/
+*.db
+*.db-journal
+
+# Export artifacts (can be regenerated)
+exports/*.json
+exports/*.csv
+exports/*.xml
+exports/*.txt
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE files
+.vscode/
+.idea/
+*.code-workspace
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Build artifacts
+build/
+dist/
+*.elf

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}CodeMunch Pro REX{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://unpkg.com/cytoscape@3.26.0/dist/cytoscape.min.js"></script>
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <a href="/">
+                <i class="fas fa-code-branch"></i>
+                <span>CodeMunch Pro REX</span>
+            </a>
+        </div>
+        <div class="nav-search">
+            <form action="/search" method="get" class="search-form">
+                <div class="search-box">
+                    <i class="fas fa-search"></i>
+                    <input type="text" name="q" id="global-search" placeholder="Search entities..." autocomplete="off">
+                    <div class="autocomplete-results" id="autocomplete-results"></div>
+                </div>
+            </form>
+        </div>
+        <div class="nav-links">
+            <a href="/" class="{% if request.url.path == '/' %}active{% endif %}">
+                <i class="fas fa-home"></i> Dashboard
+            </a>
+            <a href="/graph" class="{% if request.url.path == '/graph' %}active{% endif %}">
+                <i class="fas fa-project-diagram"></i> Graph
+            </a>
+            <a href="/memory" class="{% if request.url.path == '/memory' %}active{% endif %}">
+                <i class="fas fa-memory"></i> Memory
+            </a>
+        </div>
+    </nav>
+
+    <main class="main-content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer">
+        <div class="footer-content">
+            <span>CodeMunch Pro REX v{{ app_version }}</span>
+            <span class="footer-stats">
+                <i class="fas fa-database"></i>
+                {{ stats.artifacts }} artifacts | 
+                {{ stats.entities }} entities | 
+                {{ stats.edges }} edges
+            </span>
+        </div>
+    </footer>
+
+    <script src="/static/js/main.js"></script>
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>

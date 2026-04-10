@@ -1,0 +1,19 @@
+{
+  "version": "1.0",
+  "platform": "generic",
+  "entries": [
+    {
+      "type": "function",
+      "address": "0x00000000",
+      "name": "EntryPoint",
+      "description": "Binary entry point"
+    },
+    {
+      "type": "data",
+      "address": "0x00001000",
+      "name": "DataSection",
+      "size": 1024,
+      "description": "Data section"
+    }
+  ]
+}

@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+
+{% block title %}{{ artifact.title or artifact.artifact_id }} - CodeMunch Pro REX{% endblock %}
+
+{% block content %}
+<div class="artifact-detail">
+    <nav class="breadcrumb">
+        <a href="/">Dashboard</a>
+        <span class="separator">/</span>
+        <span class="current">{{ artifact.title or artifact.artifact_id }}</span>
+    </nav>
+
+    <header class="page-header">
+        <div class="artifact-title">
+            <span class="badge kind-{{ artifact.kind }}">{{ artifact.kind }}</span>
+            <h1>{{ artifact.title or artifact.artifact_id }}</h1>
+        </div>
+    </header>
+
+    <div class="artifact-meta">
+        <div class="meta-item">
+            <span class="meta-label">ID:</span>
+            <code class="meta-value">{{ artifact.artifact_id }}</code>
+        </div>
+        <div class="meta-item">
+            <span class="meta-label">Path:</span>
+            <code class="meta-value">{{ artifact.path }}</code>
+        </div>
+        {% if artifact.media_type %}
+        <div class="meta-item">
+            <span class="meta-label">Media Type:</span>
+            <span class="meta-value">{{ artifact.media_type }}</span>
+        </div>
+        {% endif %}
+        {% if artifact.sha256 %}
+        <div class="meta-item">
+            <span class="meta-label">SHA256:</span>
+            <code class="meta-value sha256">{{ artifact.sha256[:16] }}...</code>
+        </div>
+        {% endif %}
+    </div>
+
+    {% if artifact.metadata %}
+    <div class="artifact-metadata">
+        <h3><i class="fas fa-cog"></i> Metadata</h3>
+        <div class="metadata-content">
+            <pre><code>{{ artifact.metadata|tojson(indent=2) }}</code></pre>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="detail-tabs">
+        <div class="tab-buttons">
+            <button class="tab-btn active" data-tab="entities">
+                <i class="fas fa-cubes"></i> Entities ({{ entities|length }})
+            </button>
+            <button class="tab-btn" data-tab="evidence">
+                <i class="fas fa-file-alt"></i> Evidence ({{ evidence|length }})
+            </button>
+            <button class="tab-btn" data-tab="by-kind">
+                <i class="fas fa-th-list"></i> By Type
+            </button>
+        </div>
+
+        <div class="tab-content active" id="entities-tab">
+            {% if entities %}
+            <div class="entity-table-container">
+                <table class="entity-table">
+                    <thead>
+                        <tr>
+                            <th>Kind</th>
+                            <th>Name</th>
+                            <th>Address</th>
+                            <th>Summary</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for entity in entities %}
+                        <tr>
+                            <td><span class="badge kind-{{ entity.kind }}">{{ entity.kind }}</span></td>
+                            <td>
+                                <a href="/entity/{{ entity.entity_id }}">
+                                    {{ entity.name or entity.entity_id }}
+                                </a>
+                            </td>
+                            <td>
+                                {% if entity.location %}
+                                <code>{{ entity.location.display or "0x%04X"|format(entity.location.start) }}</code>
+                                {% else %}
+                                <span class="muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td class="truncate">{{ entity.summary or '-' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <i class="fas fa-cube"></i>
+                <p>No entities found for this artifact</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="tab-content" id="evidence-tab">
+            {% if evidence %}
+            <div class="evidence-list">
+                {% for ev in evidence %}
+                <div class="evidence-item">
+                    <div class="evidence-header">
+                        <span class="badge kind-{{ ev.kind }}">{{ ev.kind }}</span>
+                        <a href="/evidence/{{ ev.evidence_id }}">{{ ev.evidence_id }}</a>
+                    </div>
+                    {% if ev.excerpt %}
+                    <pre class="evidence-code"><code>{{ ev.excerpt[:300] }}{% if ev.excerpt|length > 300 %}...{% endif %}</code></pre>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <i class="fas fa-file-alt"></i>
+                <p>No evidence found for this artifact</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="tab-content" id="by-kind-tab">
+            {% if entities_by_kind %}
+            <div class="entities-by-kind">
+                {% for kind, kind_entities in entities_by_kind.items() %}
+                <div class="kind-section">
+                    <h4>
+                        <span class="badge kind-{{ kind }}">{{ kind }}</span>
+                        <span class="count">({{ kind_entities|length }})</span>
+                    </h4>
+                    <ul class="kind-entity-list">
+                        {% for entity in kind_entities %}
+                        <li>
+                            <a href="/entity/{{ entity.entity_id }}">
+                                {{ entity.name or entity.entity_id }}
+                            </a>
+                            {% if entity.location %}
+                            <code class="entity-address">{{ entity.location.display or "0x%04X"|format(entity.location.start) }}</code>
+                            {% endif %}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <i class="fas fa-th-list"></i>
+                <p>No entities found</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Tab switching
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    const tabContents = document.querySelectorAll('.tab-content');
+    
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tabId = btn.dataset.tab;
+            
+            tabBtns.forEach(b => b.classList.remove('active'));
+            tabContents.forEach(c => c.classList.remove('active'));
+            
+            btn.classList.add('active');
+            document.getElementById(tabId + '-tab').classList.add('active');
+        });
+    });
+});
+</script>
+{% endblock %}

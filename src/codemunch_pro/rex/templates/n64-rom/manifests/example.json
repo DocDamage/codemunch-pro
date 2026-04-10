@@ -1,0 +1,25 @@
+{
+  "version": "1.0",
+  "platform": "n64-rom",
+  "entries": [
+    {
+      "type": "data",
+      "address": "0xB0000000",
+      "name": "CartridgeHeader",
+      "size": 64,
+      "description": "N64 ROM header with metadata"
+    },
+    {
+      "type": "function",
+      "address": "0xA4000040",
+      "name": " IPL3_Entry",
+      "description": "IPL3 bootstrap entry point"
+    },
+    {
+      "type": "function",
+      "address": "0x80000400",
+      "name": "GameMain",
+      "description": "Game main function"
+    }
+  ]
+}

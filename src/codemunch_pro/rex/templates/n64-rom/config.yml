@@ -1,0 +1,73 @@
+# Nintendo 64 ROM Project Configuration
+# CodeMunch Pro Reverse Engineering Template
+
+project:
+  name: "{{PROJECT_NAME}}"
+  platform: n64-rom
+  created: "{{CREATED_DATE}}"
+  version: "1.0.0"
+
+platform:
+  type: n64-rom
+  description: "Nintendo 64 cartridge format (Z64/Big Endian)"
+  header_size: 0x40
+  base_address: 0x80000000
+  endianness: big
+  
+cpu:
+  type: VR4300
+  architecture: "mips64"
+  address_bus: 64-bit
+  data_bus: 64-bit
+  endianness: big
+  coprocessors:
+    - RSP (Reality Signal Processor)
+    - RDP (Reality Display Processor)
+    
+memory_map:
+  - name: "RDRAM"
+    range: "0x80000000-0x80400000"
+    size: 4MB
+    type: ram
+    note: "Can be expanded to 8MB with Expansion Pak"
+  - name: "RDRAM (Cached)"
+    range: "0xA0000000-0xA0400000"
+    size: 4MB
+    type: ram
+    note: "Uncached alias of RDRAM"
+  - name: "Cartridge ROM"
+    range: "0xB0000000-0xBFFFFFFF"
+    size: 256MB
+    type: rom
+    note: "Standard cartridge address space"
+  - name: "PIF ROM"
+    range: "0x1FC00000-0x1FC007FF"
+    size: 2KB
+    type: rom
+    note: "Boot ROM"
+  - name: "PIF RAM"
+    range: "0x1FC007C0-0x1FC00800"
+    size: 64B
+    type: ram
+    note: "PIF control and JoyChannel"
+    
+directories:
+  manifests: "./manifests"
+  notes: "./notes"
+  symbols: "./symbols"
+  exports: "./exports"
+  
+defaults:
+  manifest_format: "json"
+  symbol_format: "json"
+  export_format: "ghidra"
+  
+tools:
+  - name: "Ares"
+    description: "N64 emulator with debugging"
+  - name: "RMG"
+    description: "Rosalie's Mupen GUI"
+  - name: "Ghidra"
+    description: "Reverse engineering framework with N64 loader"
+  - name: "Splat"
+    description: "N64 ROM splitting tool"

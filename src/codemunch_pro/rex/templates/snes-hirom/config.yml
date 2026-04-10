@@ -1,0 +1,60 @@
+# SNES HiROM Project Configuration
+# CodeMunch Pro Reverse Engineering Template
+
+project:
+  name: "{{PROJECT_NAME}}"
+  platform: snes-hirom
+  created: "{{CREATED_DATE}}"
+  version: "1.0.0"
+
+platform:
+  type: snes-hirom
+  description: "Super Nintendo HiROM cartridge format"
+  base_address: 0xC00000
+  header_address: 0xFFC0
+  rom_size_min: 0x80000  # 512KB
+  rom_size_max: 0x400000 # 4MB
+  
+cpu:
+  type: W65C816S
+  architecture: "65c816"
+  address_bus: 24-bit
+  data_bus: 8-bit
+  
+memory_map:
+  - name: "System RAM"
+    range: "0x7E0000-0x7FFFFF"
+    size: 128KB
+    type: ram
+  - name: "Expansion RAM"
+    range: "0x400000-0x5FFFFF"
+    size: 2MB
+    type: ram
+  - name: "ROM Low"
+    range: "0x808000-0xFFFFFF"
+    size: 8MB
+    type: rom
+    mirrored: true
+  - name: "ROM High"
+    range: "0xC00000-0xFFFFFF"
+    size: 4MB
+    type: rom
+    
+directories:
+  manifests: "./manifests"
+  notes: "./notes"
+  symbols: "./symbols"
+  exports: "./exports"
+  
+defaults:
+  manifest_format: "json"
+  symbol_format: "json"
+  export_format: "ghidra"
+  
+tools:
+  - name: "bsnes-plus"
+    description: "SNES emulator with debugger"
+  - name: "Mesen-S"
+    description: "SNES emulator with debugging features"
+  - name: "Ghidra"
+    description: "Reverse engineering framework"

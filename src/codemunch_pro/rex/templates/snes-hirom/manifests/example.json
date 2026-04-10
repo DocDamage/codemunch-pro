@@ -1,0 +1,19 @@
+{
+  "version": "1.0",
+  "platform": "snes-hirom",
+  "entries": [
+    {
+      "type": "function",
+      "address": "0xC00000",
+      "name": "ResetHandler",
+      "description": "System reset entry point"
+    },
+    {
+      "type": "data",
+      "address": "0xFFC0",
+      "name": "InternalHeader",
+      "size": 32,
+      "description": "SNES cartridge header"
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+# CodeMunch Pro - Reverse Engineering Project GitIgnore
+
+# Binary files (copyrighted content or large)
+*.bin
+*.exe
+*.dll
+*.so
+*.dylib
+*.o
+*.obj
+*.lib
+*.a
+
+# CodeMunch Pro database
+.rex_db/
+*.db
+*.db-journal
+
+# Export artifacts (can be regenerated)
+exports/*.json
+exports/*.csv
+exports/*.xml
+exports/*.txt
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE files
+.vscode/
+.idea/
+*.code-workspace
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/

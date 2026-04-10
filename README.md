@@ -2,7 +2,7 @@
 
 <!-- mcp-name: io.github.BigJai/codemunch-pro -->
 
-Intelligent code indexing MCP server. 15 tools, 10 languages, tree-sitter AST extraction, hybrid search (FTS5 + vector), call graphs, remote repo indexing, incremental indexing.
+Intelligent code indexing MCP server. 32 tools, 10 languages, tree-sitter AST extraction, hybrid search (FTS5 + vector), call graphs, remote repo indexing, incremental indexing, and reverse-engineering evidence indexing.
 
 **Save 99% of tokens** — get exact function source via byte-offset seek instead of reading entire files.
 
@@ -34,7 +34,7 @@ Add to your MCP client config:
 codemunch-pro --transport streamable-http --port 5002
 ```
 
-## 15 MCP Tools
+## 32 MCP Tools
 
 | Tool | Description |
 |------|-------------|
@@ -53,6 +53,23 @@ codemunch-pro --transport streamable-http --port 5002
 | `get_callers` | Who calls this function? |
 | `diff_symbols` | What changed since last index? (PR review) |
 | `dependency_map` | What does this file depend on? What depends on it? |
+| `index_artifact` | Index one reverse-engineering artifact into the rex store |
+| `index_artifact_folder` | Index importer-supported artifacts in a folder |
+| `search_evidence` | Search reverse-engineering evidence excerpts |
+| `get_rex_entity` | Fetch a reverse-engineering entity with linked evidence |
+| `get_rex_neighbors` | Get reverse-engineering graph edges for an entity |
+| `search_rex_entities` | Search reverse-engineering entities by name or canonical reference |
+| `get_rex_artifact` | Fetch one indexed reverse-engineering artifact with linked entities and evidence |
+| `list_rex_artifacts` | List indexed reverse-engineering artifacts for a project |
+| `diff_rex_artifact` | Compare stored rex records for one artifact against current importer output |
+| `find_rex_entities_by_ref` | Find reverse-engineering entities by exact canonical reference |
+| `list_rex_entities` | List reverse-engineering entities with kind and address-space filters |
+| `get_rex_ref_context` | Fetch entities, evidence, and graph edges linked to an exact canonical reference |
+| `get_rex_ref_graph` | Traverse the reverse-engineering graph outward from an exact canonical reference |
+| `get_rex_ref_paths` | Return ranked, optionally deduplicated shortest-path style expansions from an exact canonical reference |
+| `get_rex_ref_provenance` | Summarize exact-reference provenance per artifact |
+| `compare_rex_ref_provenance` | Compare exact-reference provenance across artifacts, including disagreement summaries |
+| `list_rex_shared_refs` | List and rank canonical references shared across multiple artifacts |
 
 ## 10 Languages
 
@@ -87,7 +104,7 @@ Search raw file contents — string literals, TODO comments, config values, erro
 3. **Store** — SQLite database per repo with FTS5 virtual tables
 4. **Embed** — FastEmbed (ONNX, CPU-only) generates 384-dim vectors for semantic search
 5. **Graph** — Call expressions extracted from function bodies, edges stored and resolved
-6. **Serve** — FastMCP exposes 13 tools via stdio or HTTP
+6. **Serve** — FastMCP exposes 32 tools via stdio or HTTP
 
 ## Architecture
 
@@ -113,6 +130,33 @@ Each DB contains:
 - **Onboarding**: Search symbols semantically — "where is error handling?" finds relevant code
 - **Refactoring**: Map call graphs before moving functions between modules
 - **Documentation**: Extract all public APIs with signatures and docstrings
+
+## Reverse Engineering Foundation
+
+CodeMunch Pro now includes an initial ROM-agnostic reverse-engineering model
+under `codemunch_pro.rex`.
+
+This layer is intended to support binary and reverse-engineering projects
+without hardcoding platform-specific concepts into the core package.
+
+Current foundation pieces:
+- generic `ArtifactRecord`, `EntityRecord`, `EvidenceRecord`, and `EdgeRecord`
+- generic `AddressLocation` with named address spaces
+- adapter interfaces for address codecs and reverse-engineering importers
+- a minimal `FlatAddressCodec` for raw offset-based binaries
+- a generic `SegmentedHexAddressCodec` for bank/segment:offset references such as `C3:2B00`
+- `GenericDocumentImporter` for `.md`, `.txt`, `.json`, `.yaml`, `.yml`, `.asm`, `.s`, and `.inc`
+- section extraction, structured field promotion, and codec-assisted reference extraction
+- artifact replacement on re-index so stale rex records do not linger
+- `ReverseEngineeringStore` for SQLite-backed persistence and text search over evidence
+
+Design notes and the roadmap live in:
+- `docs/reverse_engineering_foundation.md`
+
+Planned next steps:
+- add richer reverse-engineering query tools on top of the rex store
+- add optional project-specific importers for manifests, traces, and labels
+- add platform adapters such as SNES HiROM and LoROM as optional codecs
 
 ## License
 

@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+
+{% block title %}Graph View - CodeMunch Pro REX{% endblock %}
+
+{% block extra_head %}
+<style>
+    #graph-container {
+        width: 100%;
+        height: calc(100vh - 200px);
+        min-height: 500px;
+        background: var(--bg-secondary);
+        border-radius: var(--border-radius);
+        border: 1px solid var(--border-color);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="graph-page">
+    <header class="page-header">
+        <h1><i class="fas fa-project-diagram"></i> Graph View</h1>
+    </header>
+
+    <div class="graph-controls">
+        <form action="/graph" method="get" class="graph-form">
+            <div class="form-group">
+                <label for="entity_id">Root Entity:</label>
+                {% if has_data %}
+                <input type="text" name="entity_id" id="entity_id" value="{{ entity_id }}" placeholder="Enter entity ID">
+                {% else %}
+                <select name="entity_id" id="entity_id">
+                    <option value="">Select an entity...</option>
+                    {% for entity in available_entities %}
+                    <option value="{{ entity.id }}">{{ entity.name }} ({{ entity.kind }})</option>
+                    {% endfor %}
+                </select>
+                {% endif %}
+            </div>
+            <div class="form-group">
+                <label for="depth">Depth:</label>
+                <select name="depth" id="depth">
+                    <option value="1" {% if depth == 1 %}selected{% endif %}>1 hop</option>
+                    <option value="2" {% if depth == 2 %}selected{% endif %}>2 hops</option>
+                    <option value="3" {% if depth == 3 %}selected{% endif %}>3 hops</option>
+                    <option value="4" {% if depth == 4 %}selected{% endif %}>4 hops</option>
+                    <option value="5" {% if depth == 5 %}selected{% endif %}>5 hops</option>
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-sync"></i> Load Graph
+            </button>
+        </form>
+
+        <div class="graph-actions">
+            <button id="reset-zoom" class="btn btn-secondary">
+                <i class="fas fa-compress-arrows-alt"></i> Reset View
+            </button>
+            <button id="fit-graph" class="btn btn-secondary">
+                <i class="fas fa-expand-arrows-alt"></i> Fit to Screen
+            </button>
+        </div>
+    </div>
+
+    {% if has_data %}
+    <div class="graph-info">
+        <span><i class="fas fa-circle" style="color: #4a9eff;"></i> Root</span>
+        <span><i class="fas fa-circle" style="color: #6c5ce7;"></i> Depth 1</span>
+        <span><i class="fas fa-circle" style="color: #00b894;"></i> Depth 2+</span>
+        <span class="graph-stats">
+            {{ graph_data.nodes|length }} nodes, {{ graph_data.edges|length }} edges
+        </span>
+    </div>
+
+    <div id="graph-container"></div>
+    {% else %}
+    <div class="empty-state large">
+        <i class="fas fa-project-diagram"></i>
+        <p>Select an entity to visualize its relationships</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+{% if has_data %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const graphData = {{ graph_data|tojson }};
+    
+    // Prepare data for Cytoscape
+    const nodes = graphData.nodes.map(node => ({
+        data: {
+            id: node.id,
+            label: node.label,
+            kind: node.kind,
+            depth: node.depth
+        }
+    }));
+    
+    const edges = graphData.edges.map(edge => ({
+        data: {
+            id: edge.id,
+            source: edge.source,
+            target: edge.target,
+            kind: edge.kind
+        }
+    }));
+    
+    // Initialize Cytoscape
+    const cy = cytoscape({
+        container: document.getElementById('graph-container'),
+        elements: [...nodes, ...edges],
+        style: [
+            {
+                selector: 'node',
+                style: {
+                    'background-color': '#6c5ce7',
+                    'label': 'data(label)',
+                    'width': 40,
+                    'height': 40,
+                    'font-size': '12px',
+                    'text-valign': 'center',
+                    'text-halign': 'center',
+                    'color': '#fff',
+                    'text-outline-color': '#2d3436',
+                    'text-outline-width': 2,
+                    'border-width': 2,
+                    'border-color': '#fff'
+                }
+            },
+            {
+                selector: 'node[depth = 0]',
+                style: {
+                    'background-color': '#4a9eff',
+                    'width': 50,
+                    'height': 50,
+                    'font-size': '14px',
+                    'font-weight': 'bold'
+                }
+            },
+            {
+                selector: 'node[depth >= 2]',
+                style: {
+                    'background-color': '#00b894'
+                }
+            },
+            {
+                selector: 'edge',
+                style: {
+                    'width': 2,
+                    'line-color': '#636e72',
+                    'target-arrow-color': '#636e72',
+                    'target-arrow-shape': 'triangle',
+                    'curve-style': 'bezier',
+                    'arrow-scale': 1.5
+                }
+            },
+            {
+                selector: ':selected',
+                style: {
+                    'border-width': 4,
+                    'border-color': '#ffd700'
+                }
+            }
+        ],
+        layout: {
+            name: 'cose',
+            padding: 50,
+            nodeRepulsion: 400000,
+            edgeElasticity: 100,
+            nestingFactor: 5,
+            gravity: 80,
+            numIter: 1000,
+            initialTemp: 200,
+            coolingFactor: 0.95,
+            minTemp: 1.0
+        }
+    });
+    
+    // Handle node clicks
+    cy.on('tap', 'node', function(evt) {
+        const node = evt.target;
+        const nodeId = node.id();
+        window.location.href = '/entity/' + encodeURIComponent(nodeId);
+    });
+    
+    // Handle node hover
+    cy.on('mouseover', 'node', function(evt) {
+        document.body.style.cursor = 'pointer';
+    });
+    
+    cy.on('mouseout', 'node', function(evt) {
+        document.body.style.cursor = 'default';
+    });
+    
+    // Control buttons
+    document.getElementById('reset-zoom').addEventListener('click', () => {
+        cy.reset();
+    });
+    
+    document.getElementById('fit-graph').addEventListener('click', () => {
+        cy.fit();
+    });
+    
+    // Initial fit
+    setTimeout(() => {
+        cy.fit();
+    }, 500);
+});
+</script>
+{% endif %}
+{% endblock %}

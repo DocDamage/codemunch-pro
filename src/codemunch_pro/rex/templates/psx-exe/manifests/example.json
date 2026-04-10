@@ -1,0 +1,25 @@
+{
+  "version": "1.0",
+  "platform": "psx-exe",
+  "entries": [
+    {
+      "type": "function",
+      "address": "0x80010000",
+      "name": "Start",
+      "description": "Program entry point"
+    },
+    {
+      "type": "data",
+      "address": "0x80010080",
+      "name": "EXE_Header",
+      "size": 2048,
+      "description": "PS-X EXE file header"
+    },
+    {
+      "type": "function",
+      "address": "0x800B0CF0",
+      "name": "SetGP",
+      "description": "Set global pointer register"
+    }
+  ]
+}

@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+
+{% block title %}Memory Map - CodeMunch Pro REX{% endblock %}
+
+{% block content %}
+<div class="memory-page">
+    <header class="page-header">
+        <h1><i class="fas fa-memory"></i> Memory Map</h1>
+    </header>
+
+    <div class="memory-controls">
+        <form action="/memory" method="get" class="memory-form">
+            <div class="form-group">
+                <label for="address_space">Address Space:</label>
+                <select name="address_space" id="address_space">
+                    <option value="">Select address space...</option>
+                    {% for space in address_spaces %}
+                    <option value="{{ space }}" {% if space == current_space %}selected{% endif %}>{{ space }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-eye"></i> View
+            </button>
+        </form>
+    </div>
+
+    {% if memory_map %}
+    <div class="memory-info">
+        <div class="info-item">
+            <span class="info-label">Address Space:</span>
+            <span class="info-value">{{ memory_map.address_space }}</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Range:</span>
+            <span class="info-value">0x{{ "%04X"|format(memory_map.min_address) }} - 0x{{ "%04X"|format(memory_map.max_address) }}</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Total Size:</span>
+            <span class="info-value">{{ "%.2f"|format(memory_map.total_size / 1024) }} KB ({{ memory_map.total_size }} bytes)</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Blocks:</span>
+            <span class="info-value">{{ memory_map.block_count }}</span>
+        </div>
+    </div>
+
+    <div class="memory-visualization">
+        <div class="memory-legend">
+            <span><span class="legend-color function"></span> Function</span>
+            <span><span class="legend-color data"></span> Data</span>
+            <span><span class="legend-color string"></span> String</span>
+            <span><span class="legend-color section"></span> Section</span>
+            <span><span class="legend-color label"></span> Label</span>
+            <span><span class="legend-color other"></span> Other</span>
+        </div>
+
+        <div class="memory-blocks">
+            {% for block in memory_map.blocks %}
+            <a href="/entity/{{ block.id }}" class="memory-block kind-{{ block.kind }}" 
+               style="flex-grow: {{ [block.size, 1]|max }};"
+               title="{{ block.name }} ({{ block.kind }}) - 0x{{ "%04X"|format(block.start) }} - 0x{{ "%04X"|format(block.end) }} ({{ block.size }} bytes)">
+                <span class="block-name">{{ block.name[:20] }}</span>
+                <span class="block-address">{{ block.display }}</span>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="memory-table-container">
+        <table class="memory-table">
+            <thead>
+                <tr>
+                    <th>Kind</th>
+                    <th>Name</th>
+                    <th>Address</th>
+                    <th>End</th>
+                    <th>Size</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for block in memory_map.blocks %}
+                <tr>
+                    <td><span class="badge kind-{{ block.kind }}">{{ block.kind }}</span></td>
+                    <td><a href="/entity/{{ block.id }}">{{ block.name }}</a></td>
+                    <td><code>0x{{ "%04X"|format(block.start) }}</code></td>
+                    <td><code>0x{{ "%04X"|format(block.end) }}</code></td>
+                    <td>{{ block.size }} bytes</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state large">
+        <i class="fas fa-memory"></i>
+        <p>Select an address space to view the memory map</p>
+        {% if not address_spaces %}
+        <p class="subtle">No address spaces found in the database</p>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Add hover effects for memory blocks
+    const blocks = document.querySelectorAll('.memory-block');
+    blocks.forEach(block => {
+        block.addEventListener('mouseenter', () => {
+            blocks.forEach(b => {
+                if (b !== block) {
+                    b.style.opacity = '0.5';
+                }
+            });
+        });
+        
+        block.addEventListener('mouseleave', () => {
+            blocks.forEach(b => {
+                b.style.opacity = '1';
+            });
+        });
+    });
+});
+</script>
+{% endblock %}

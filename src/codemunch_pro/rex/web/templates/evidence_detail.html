@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block title %}{{ evidence.evidence_id }} - CodeMunch Pro REX{% endblock %}
+
+{% block content %}
+<div class="evidence-detail">
+    <nav class="breadcrumb">
+        <a href="/">Dashboard</a>
+        <span class="separator">/</span>
+        <span class="current">Evidence: {{ evidence.evidence_id }}</span>
+    </nav>
+
+    <header class="page-header">
+        <div class="evidence-title">
+            <span class="badge kind-{{ evidence.kind }}">{{ evidence.kind }}</span>
+            <h1>{{ evidence.evidence_id }}</h1>
+        </div>
+    </header>
+
+    <div class="evidence-meta">
+        <div class="meta-item">
+            <span class="meta-label">ID:</span>
+            <code class="meta-value">{{ evidence.evidence_id }}</code>
+        </div>
+        <div class="meta-item">
+            <span class="meta-label">Kind:</span>
+            <span class="meta-value">{{ evidence.kind }}</span>
+        </div>
+        {% if evidence.artifact_id %}
+        <div class="meta-item">
+            <span class="meta-label">Artifact:</span>
+            {% if artifact %}
+            <a href="/artifact/{{ evidence.artifact_id }}" class="meta-value">{{ artifact.title or evidence.artifact_id }}</a>
+            {% else %}
+            <code class="meta-value">{{ evidence.artifact_id }}</code>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% if evidence.confidence %}
+        <div class="meta-item">
+            <span class="meta-label">Confidence:</span>
+            <span class="meta-value confidence-badge">
+                {{ "%.0f"|format(evidence.confidence * 100) }}%
+            </span>
+        </div>
+        {% endif %}
+        {% if evidence.location %}
+        <div class="meta-item">
+            <span class="meta-label">Address:</span>
+            <code class="meta-value">{{ evidence.location.display or "0x%04X"|format(evidence.location.start) }}</code>
+        </div>
+        {% endif %}
+    </div>
+
+    {% if related_entities %}
+    <div class="related-entities">
+        <h3><i class="fas fa-cubes"></i> Related Entities</h3>
+        <div class="entity-tags">
+            {% for entity in related_entities %}
+            <a href="/entity/{{ entity.entity_id }}" class="entity-tag">
+                <span class="badge kind-{{ entity.kind }}">{{ entity.kind }}</span>
+                <span class="entity-name">{{ entity.name or entity.entity_id }}</span>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if evidence.excerpt %}
+    <div class="evidence-content">
+        <h3><i class="fas fa-file-code"></i> Content</h3>
+        <div class="excerpt-container">
+            <pre><code class="language-asm">{{ evidence.excerpt }}</code></pre>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if evidence.attributes %}
+    <div class="evidence-attributes">
+        <h3><i class="fas fa-cog"></i> Attributes</h3>
+        <div class="attributes-table-container">
+            <table class="attributes-table">
+                <thead>
+                    <tr>
+                        <th>Attribute</th>
+                        <th>Value</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for key, value in evidence.attributes.items() %}
+                    <tr>
+                        <td><code>{{ key }}</code></td>
+                        <td>
+                            {% if value is mapping %}
+                            <pre><code>{{ value|tojson(indent=2) }}</code></pre>
+                            {% elif value is sequence and value is not string %}
+                            <code>{{ value|tojson }}</code>
+                            {% else %}
+                            <code>{{ value }}</code>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

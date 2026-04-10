@@ -41,10 +41,15 @@ dependencies = [
   "fastembed>=0.6.0",
   "sqlite-vec>=0.1.0",
   "pathspec>=0.12.0",
+  "fastapi>=0.100.0",
+  "uvicorn>=0.23.0",
+  "jinja2>=3.1.0",
+  "python-multipart>=0.0.6",
 ]
 
 [project.scripts]
 codemunch-pro = "codemunch_pro.__main__:main"
+codemunch-web = "codemunch_pro.__main__:web_main"
 
 [project.urls]
 Homepage = "https://github.com/BigJai/codemunch-pro"
@@ -57,3 +62,6 @@ packages = ["src/codemunch_pro"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+  "network: requires network access",
+]

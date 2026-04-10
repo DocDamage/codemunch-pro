@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+
+{% block title %}{{ entity.name or entity.entity_id }} - CodeMunch Pro REX{% endblock %}
+
+{% block content %}
+<div class="entity-detail">
+    <nav class="breadcrumb">
+        <a href="/">Dashboard</a>
+        <span class="separator">/</span>
+        <span class="current">{{ entity.name or entity.entity_id }}</span>
+    </nav>
+
+    <header class="page-header entity-header">
+        <div class="entity-title">
+            <span class="badge kind-{{ entity.kind }} large">{{ entity.kind }}</span>
+            <h1>{{ entity.name or entity.entity_id }}</h1>
+        </div>
+        <div class="entity-actions">
+            <a href="/graph?entity_id={{ entity.entity_id }}" class="btn btn-primary">
+                <i class="fas fa-project-diagram"></i> View Graph
+            </a>
+        </div>
+    </header>
+
+    <div class="entity-meta">
+        <div class="meta-item">
+            <span class="meta-label">ID:</span>
+            <code class="meta-value">{{ entity.entity_id }}</code>
+        </div>
+        {% if entity.canonical_ref %}
+        <div class="meta-item">
+            <span class="meta-label">Reference:</span>
+            <code class="meta-value">{{ entity.canonical_ref }}</code>
+        </div>
+        {% endif %}
+        {% if entity.location %}
+        <div class="meta-item">
+            <span class="meta-label">Address:</span>
+            <code class="meta-value">{{ entity.location.display or "0x%04X"|format(entity.location.start) }}</code>
+        </div>
+        <div class="meta-item">
+            <span class="meta-label">Range:</span>
+            <code class="meta-value">0x{{ "%04X"|format(entity.location.start) }} - 0x{{ "%04X"|format(entity.location.end) }}</code>
+        </div>
+        <div class="meta-item">
+            <span class="meta-label">Size:</span>
+            <span class="meta-value">{{ entity.location.size }} bytes</span>
+        </div>
+        {% endif %}
+        {% if artifact %}
+        <div class="meta-item">
+            <span class="meta-label">Artifact:</span>
+            <a href="/artifact/{{ artifact.artifact_id }}" class="meta-value">{{ artifact.title or artifact.artifact_id }}</a>
+        </div>
+        {% endif %}
+    </div>
+
+    {% if entity.summary %}
+    <div class="entity-summary-box">
+        <h3><i class="fas fa-info-circle"></i> Summary</h3>
+        <p>{{ entity.summary }}</p>
+    </div>
+    {% endif %}
+
+    {% if entity.aliases %}
+    <div class="entity-aliases">
+        <h3><i class="fas fa-tags"></i> Aliases</h3>
+        <div class="alias-list">
+            {% for alias in entity.aliases %}
+            <span class="alias-tag">{{ alias }}</span>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="detail-tabs">
+        <div class="tab-buttons">
+            <button class="tab-btn active" data-tab="relations">
+                <i class="fas fa-project-diagram"></i> Relations ({{ neighbors|length }})
+            </button>
+            <button class="tab-btn" data-tab="evidence">
+                <i class="fas fa-file-alt"></i> Evidence ({{ evidence|length }})
+            </button>
+            <button class="tab-btn" data-tab="attributes">
+                <i class="fas fa-cog"></i> Attributes
+            </button>
+        </div>
+
+        <div class="tab-content active" id="relations-tab">
+            {% if neighbors %}
+            <div class="neighbors-grid">
+                {% for neighbor in neighbors %}
+                <div class="neighbor-card {{ neighbor.direction }}">
+                    <div class="neighbor-header">
+                        <span class="badge kind-{{ neighbor.entity.kind }}">{{ neighbor.entity.kind }}</span>
+                        <span class="edge-direction">
+                            {% if neighbor.direction == 'outgoing' %}
+                            <i class="fas fa-arrow-right"></i> {{ neighbor.edge.kind }}
+                            {% else %}
+                            <i class="fas fa-arrow-left"></i> {{ neighbor.edge.kind }}
+                            {% endif %}
+                        </span>
+                    </div>
+                    <h4>
+                        <a href="/entity/{{ neighbor.entity.entity_id }}">
+                            {{ neighbor.entity.name or neighbor.entity.entity_id }}
+                        </a>
+                    </h4>
+                    {% if neighbor.entity.location %}
+                    <code class="neighbor-address">{{ neighbor.entity.location.display or "0x%04X"|format(neighbor.entity.location.start) }}</code>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <i class="fas fa-unlink"></i>
+                <p>No relations found for this entity</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="tab-content" id="evidence-tab">
+            {% if evidence %}
+            <div class="evidence-list">
+                {% for ev in evidence %}
+                <div class="evidence-item">
+                    <div class="evidence-header">
+                        <span class="badge kind-{{ ev.kind }}">{{ ev.kind }}</span>
+                        <a href="/evidence/{{ ev.evidence_id }}">{{ ev.evidence_id }}</a>
+                    </div>
+                    {% if ev.excerpt %}
+                    <pre class="evidence-code"><code>{{ ev.excerpt }}</code></pre>
+                    {% endif %}
+                    {% if ev.confidence %}
+                    <div class="evidence-confidence">
+                        Confidence: {{ "%.0f"|format(ev.confidence * 100) }}%
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <i class="fas fa-file-alt"></i>
+                <p>No evidence found for this entity</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="tab-content" id="attributes-tab">
+            {% if entity.attributes %}
+            <div class="attributes-table-container">
+                <table class="attributes-table">
+                    <thead>
+                        <tr>
+                            <th>Attribute</th>
+                            <th>Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for key, value in entity.attributes.items() %}
+                        <tr>
+                            <td><code>{{ key }}</code></td>
+                            <td>
+                                {% if value is mapping %}
+                                <pre><code>{{ value|tojson(indent=2) }}</code></pre>
+                                {% elif value is sequence and value is not string %}
+                                <code>{{ value|tojson }}</code>
+                                {% else %}
+                                <code>{{ value }}</code>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <i class="fas fa-cog"></i>
+                <p>No attributes found for this entity</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Tab switching
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    const tabContents = document.querySelectorAll('.tab-content');
+    
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tabId = btn.dataset.tab;
+            
+            tabBtns.forEach(b => b.classList.remove('active'));
+            tabContents.forEach(c => c.classList.remove('active'));
+            
+            btn.classList.add('active');
+            document.getElementById(tabId + '-tab').classList.add('active');
+        });
+    });
+});
+</script>
+{% endblock %}

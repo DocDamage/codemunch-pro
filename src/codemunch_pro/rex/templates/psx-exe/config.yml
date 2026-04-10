@@ -1,0 +1,62 @@
+# PlayStation EXE Project Configuration
+# CodeMunch Pro Reverse Engineering Template
+
+project:
+  name: "{{PROJECT_NAME}}"
+  platform: psx-exe
+  created: "{{CREATED_DATE}}"
+  version: "1.0.0"
+
+platform:
+  type: psx-exe
+  description: "Sony PlayStation executable format"
+  header_size: 0x800
+  base_address: 0x80010000
+  
+cpu:
+  type: R3000A
+  architecture: "mips"
+  address_bus: 32-bit
+  data_bus: 32-bit
+  endianness: little
+  coprocessors:
+    - GTE (Geometry Transformation Engine)
+    - MDEC (Macroblock Decoder)
+    
+memory_map:
+  - name: "Kernel RAM"
+    range: "0x00000000-0x00010000"
+    size: 64KB
+    type: ram
+  - name: "User RAM"
+    range: "0x00010000-0x00200000"
+    size: 2MB
+    type: ram
+  - name: "Expanded RAM"
+    range: "0x00200000-0x00800000"
+    size: 6MB
+    type: ram
+    note: "Only on systems with 8MB RAM expansion"
+  - name: "BIOS ROM"
+    range: "0x1FC00000-0x1FC80000"
+    size: 512KB
+    type: rom
+    
+directories:
+  manifests: "./manifests"
+  notes: "./notes"
+  symbols: "./symbols"
+  exports: "./exports"
+  
+defaults:
+  manifest_format: "json"
+  symbol_format: "json"
+  export_format: "ghidra"
+  
+tools:
+  - name: "PCSX-Redux"
+    description: "PlayStation emulator with debugger"
+  - name: "DuckStation"
+    description: "PlayStation emulator"
+  - name: "Ghidra"
+    description: "Reverse engineering framework with PSX loader"
