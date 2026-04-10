@@ -87,11 +87,9 @@ def main() -> int:
         if args.transport == 'stdio':
             mcp.run(transport='stdio')
         else:
-            mcp.run(
-                transport='streamable-http',
-                host='0.0.0.0',
-                port=args.port,
-            )
+            # FastMCP host/port are configured during create_server(); newer
+            # mcp versions may reject host/port kwargs on run().
+            mcp.run(transport='streamable-http')
         return 0
     
     # If we get here, show help
